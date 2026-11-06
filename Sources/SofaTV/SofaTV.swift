@@ -746,6 +746,7 @@ struct ChannelListManager: View {
         WindowGroup("沙发电视") {
             ContentView().frame(minWidth: 900, minHeight: 560)
                 .environment(\.locale, Locale(identifier: "zh_Hans_CN"))
+                .preferredColorScheme(.dark)
         }
             // New installs use this size; MainWindowChrome restores each user's saved frame.
             .defaultSize(width: 1050, height: 589)

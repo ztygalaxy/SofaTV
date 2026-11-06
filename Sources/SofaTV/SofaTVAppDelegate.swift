@@ -3,6 +3,10 @@ import AppKit
 @MainActor final class SofaTVAppDelegate: NSObject, NSApplicationDelegate {
     private var updatingMenuBar = false
 
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        NSApplication.shared.appearance = NSAppearance(named: .darkAqua)
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         if let url = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"), let image = NSImage(contentsOf: url) {
             NSApplication.shared.applicationIconImage = image

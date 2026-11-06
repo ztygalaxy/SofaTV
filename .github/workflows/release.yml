@@ -148,5 +148,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add VERSION
-          git commit -m "code: prepare SofaTV $next."
+          git commit -m "feat: prepare version code $next."
           git push origin HEAD:main
