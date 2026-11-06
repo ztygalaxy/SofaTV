@@ -1,6 +1,12 @@
 import SwiftUI
 import WebKit
 
+struct ResolvedWebMedia: Sendable {
+    let url: URL
+    let cookies: [HTTPCookie]
+    let cmgState: CmgSessionState?
+}
+
 /// Keeps a real, window-attached WebKit session behind the opaque native player.
 /// No page UI is exposed and its media is always muted.
 @MainActor final class WebMediaResolver: NSObject, ObservableObject, WKScriptMessageHandler, WKNavigationDelegate {
@@ -8,7 +14,7 @@ import WebKit
     private var lastMedia: String?
     let webView: WKWebView
     private var generation = UUID()
-    private var completion: ((URL, [HTTPCookie]) -> Void)?
+    private var completion: ((ResolvedWebMedia) -> Void)?
     private var failure: ((String) -> Void)?
     private var candidates = Set<String>()
     private var active = false
@@ -17,20 +23,59 @@ import WebKit
     private var desiredVolume: Float = 0.3
     private var pendingVolume: Float?
     private var volumeTask: Task<Void, Never>?
-    override init() {
+    init(keepsVideoRunning: Bool = true) {
         let configuration = WKWebViewConfiguration()
         // Channel resolution only needs cookies for the current playback session.
         // A non-persistent store also prevents ad-hoc development builds from
         // touching WebKit data created under a previous code-signing identity.
         configuration.websiteDataStore = .nonPersistent()
-        configuration.mediaTypesRequiringUserActionForPlayback = []
+        let isolationScript: String
+        if keepsVideoRunning {
+            configuration.mediaTypesRequiringUserActionForPlayback = []
+            isolationScript = "window.__sofatvNativeActive=false;"
+        } else {
+            // Do not rely on the later one-second media scan for silence: a
+            // page can start an audio element before that scan first runs.
+            // Block autoplay at WebKit level and at the earliest document hook.
+            configuration.mediaTypesRequiringUserActionForPlayback = .all
+            isolationScript = #"""
+            window.__sofatvNativeActive=true;
+            (() => {
+              const silence = media => { try { media.muted=true; media.volume=0; media.pause(); } catch (_) {} };
+              if (window.HTMLMediaElement) {
+                HTMLMediaElement.prototype.play=function(){
+                  silence(this);
+                  return Promise.reject(new DOMException('Background media playback is disabled','NotAllowedError'));
+                };
+              }
+              document.addEventListener('play', event => silence(event.target), true);
+              const suspendAudioContext = Constructor => {
+                if (!Constructor || !Constructor.prototype) return;
+                const suspend = Constructor.prototype.suspend;
+                Constructor.prototype.resume=function(){
+                  try { return suspend ? suspend.call(this) : Promise.resolve(); }
+                  catch (_) { return Promise.resolve(); }
+                };
+              };
+              suspendAudioContext(window.AudioContext);
+              suspendAudioContext(window.webkitAudioContext);
+            })();
+            """#
+        }
         webView = WKWebView(frame: .zero, configuration: configuration)
         super.init()
+        // A warm-up resolver only observes requests.  It must not decode a second
+        // video stream in the background while the user is watching another one.
+        configuration.userContentController.addUserScript(WKUserScript(
+            source: isolationScript,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: false
+        ))
         configuration.userContentController.add(WeakMediaHandler(self), name: "media")
         configuration.userContentController.addUserScript(WKUserScript(source: Self.script, injectionTime: .atDocumentStart, forMainFrameOnly: false))
         webView.navigationDelegate = self
     }
-    func resolve(_ url: URL, completion: @escaping (URL, [HTTPCookie]) -> Void, failure: @escaping (String) -> Void) {
+    func resolve(_ url: URL, completion: @escaping (ResolvedWebMedia) -> Void, failure: @escaping (String) -> Void) {
         cancel(); active = true; candidates = []; self.completion = completion; self.failure = failure
         webView.load(URLRequest(url: url))
     }
@@ -147,7 +192,7 @@ import WebKit
         let token = generation
         webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { [weak self] cookies in
             guard let self, self.active, self.generation == token else { return }
-            self.completion?(url, cookies)
+            self.completion?(ResolvedWebMedia(url: url, cookies: cookies, cmgState: self.cmgState))
         }
     }
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {

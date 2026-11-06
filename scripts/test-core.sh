@@ -22,6 +22,8 @@ swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/Sof
 swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/SofaTV/ProgramGuidePayload.swift tests/ProgramGuidePayloadChecks.swift -o /private/tmp/sofatv-program-guide-payload-check
 /private/tmp/sofatv-program-guide-payload-check
 swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/SofaTV/ChannelCatalog.swift Sources/SofaTV/ProgramGuide.swift Sources/SofaTV/ProgramGuidePayload.swift Sources/SofaTV/ProgramGuideRepository.swift tests/ProgramGuideRepositoryChecks.swift -o /private/tmp/sofatv-program-guide-repository-check
+swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang -framework AppKit Sources/SofaTV/ChannelCatalog.swift Sources/SofaTV/ProgramGuide.swift Sources/SofaTV/ProgramGuidePayload.swift Sources/SofaTV/ProgramGuideRepository.swift Sources/SofaTV/ProgramGuideStore.swift tests/ProgramGuideStoreChecks.swift -o /private/tmp/sofatv-program-guide-store-check
+/private/tmp/sofatv-program-guide-store-check
 /private/tmp/sofatv-program-guide-repository-check
 swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/SofaTV/VideoVolumeScroll.swift tests/VideoVolumeScrollChecks.swift -o /private/tmp/sofatv-video-volume-check
 /private/tmp/sofatv-video-volume-check

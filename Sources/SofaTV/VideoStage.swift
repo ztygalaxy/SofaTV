@@ -228,6 +228,10 @@ struct VideoStage: NSViewRepresentable {
                 self?.library?.toggleMute()
                 self?.showVolumeFeedback()
             }
+            volumeControl.onReload = { [weak self] in
+                self?.volumeScroll.reset()
+                self?.library?.reloadCurrentChannel()
+            }
             volumeControl.onVolumeChanged = { [weak self] value in
                 self?.volumeScroll.reset()
                 self?.library?.setVolume(value)

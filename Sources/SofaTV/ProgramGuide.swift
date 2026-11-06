@@ -30,6 +30,8 @@ struct ProgramGuide: Codable, Sendable {
 
     private let programsByChannel: [String: [Program]]
     private let channelByAlias: [String: String]
+    // Keep each source's IDs and aliases separate. Optional for pre-supplement cache compatibility.
+    private let fallbackGuides: [ProgramGuide]?
 
     enum ParseError: LocalizedError {
         case invalidXML, emptyGuide
@@ -54,7 +56,21 @@ struct ProgramGuide: Codable, Sendable {
         currentProgram(channel: channel, at: date)?.title
     }
 
+    /// Earlier sources retain priority whenever they have a programme valid at the requested time.
+    func supplementing(with fallback: ProgramGuide) -> ProgramGuide {
+        ProgramGuide(programsByChannel: programsByChannel, channelByAlias: channelByAlias,
+                     fallbackGuides: (fallbackGuides ?? []) + [fallback])
+    }
+
     func currentProgram(channel: Channel, at date: Date = Date()) -> CurrentProgram? {
+        if let current = localProgram(channel: channel, at: date) { return current }
+        for fallback in fallbackGuides ?? [] {
+            if let current = fallback.currentProgram(channel: channel, at: date) { return current }
+        }
+        return nil
+    }
+
+    private func localProgram(channel: Channel, at date: Date) -> CurrentProgram? {
         guard let id = channelID(for: channel), let programs = programsByChannel[id] else { return nil }
         // Find the latest start first; overlapping entries still require a valid end.
         var lower = 0, upper = programs.count
@@ -71,9 +87,9 @@ struct ProgramGuide: Codable, Sendable {
         return nil
     }
 
-    /// The next programme boundary, allowing the caller to schedule one refresh.
+    /// Include every source so a future primary programme can take over from its fallback on time.
     func nextChange(after date: Date) -> Date? {
-        var next: Date?
+        var next = fallbackGuides?.compactMap { $0.nextChange(after: date) }.min()
         for programs in programsByChannel.values {
             for program in programs {
                 for boundary in [program.start, program.end] where boundary > date {
@@ -256,7 +272,7 @@ struct ProgramGuide: Codable, Sendable {
             }
             // Display-name aliases take priority over unrelated opaque ID aliases.
             for (alias, id) in displayAliases where !alias.isEmpty && sortedPrograms[id] != nil { aliases[alias] = id }
-            return ProgramGuide(programsByChannel: sortedPrograms, channelByAlias: aliases)
+            return ProgramGuide(programsByChannel: sortedPrograms, channelByAlias: aliases, fallbackGuides: nil)
         }
     }
 }

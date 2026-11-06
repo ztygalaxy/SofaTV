@@ -30,6 +30,7 @@ import UniformTypeIdentifiers
     @Published var videoVisible = false
     @Published var webVideo = false
     let resolver = WebMediaResolver()
+    let warmup = WebMediaWarmup()
     private var session = UUID()
     private var race = PlaybackRace()
     @Published var playbackMetrics = "尚无播放统计"
@@ -45,7 +46,7 @@ import UniformTypeIdentifiers
         NSPasteboard.general.setString(diagnostics.joined(separator: "\n"), forType: .string)
     }
     private var resolving = false
-    private var latestWebMedia: (url: URL, cookies: [HTTPCookie])?
+    private var latestWebMedia: ResolvedWebMedia?
     private var deferredH5eIndex: Int?
     private var allowReducedH5e = false
     private var cmgLoader: CmgAssetLoader?
@@ -66,6 +67,11 @@ import UniformTypeIdentifiers
         guard let channel = selected, channel.sources.indices.contains(index) else { return }
         UserDefaults.standard.set(channel.sources[index].absoluteString, forKey: "line-" + channel.id)
         attempted = []; allowReducedH5e = false; deferredH5eIndex = nil; start(channel, index: index)
+    }
+    func reloadCurrentChannel() {
+        guard let channel = selected, channel.sources.indices.contains(sourceIndex) else { return }
+        attempted = []; allowReducedH5e = false; deferredH5eIndex = nil
+        start(channel, index: sourceIndex)
     }
     func nextChannel(_ offset: Int) {
         guard !channels.isEmpty else { return }
@@ -152,16 +158,31 @@ import UniformTypeIdentifiers
               ["http", "https"].contains(page.scheme ?? "") else { return nil }
         return page
     }
+    private func configureWarmup() {
+        let pages = channels.flatMap(\.sources).compactMap(webpageURL)
+        var priority: [URL] = []
+        if let selected, let index = channels.firstIndex(of: selected), channels.count > 1 {
+            priority += [channels[(index + 1) % channels.count], channels[(index - 1 + channels.count) % channels.count]]
+                .flatMap(\.sources).compactMap(webpageURL)
+        }
+        priority += channels.filter { favorites.contains($0.id) }.flatMap(\.sources).compactMap(webpageURL)
+        warmup.configure(pages: pages, prioritized: priority)
+    }
     private func startWeb(_ page: URL, channel: Channel, index: Int) {
         resolving = true; playbackStatus = "正在解析视频…"
         let token = session
-        resolver.resolve(page, completion: { [weak self] media, cookies in
+        if let media = warmup.cachedMedia(for: page) {
+            latestWebMedia = media
+            playbackStatus = "已预解析视频，连接中…"
+            playMedia(media.url, cookies: media.cookies, cmgState: media.cmgState, channel: channel, index: index)
+        }
+        resolver.resolve(page, completion: { [weak self] media in
             guard let self, self.session == token, self.race.output != .native else { return }
-            self.latestWebMedia = (media, cookies)
+            self.latestWebMedia = media
             if !self.videoVisible && self.cmgLoader == nil { self.playbackStatus = "已发现视频，连接中…" }
             if self.cmgLoader == nil {
                 self.recordNative(self.resolver.cmgState == nil ? "发现媒体地址，等待央视频会话状态" : "已采集央视频会话状态")
-                self.playMedia(media, cookies: cookies, channel: channel, index: index)
+                self.playMedia(media.url, cookies: media.cookies, cmgState: media.cmgState, channel: channel, index: index)
             }
         }, failure: { [weak self] message in
             guard let self, self.session == token else { return }
@@ -175,13 +196,13 @@ import UniformTypeIdentifiers
             self.failed(channel, index: index, message: "网页和原生通道均未能显示视频，请重试或切换线路。")
         }
     }
-    private func playMedia(_ url: URL, cookies: [HTTPCookie], channel: Channel, index: Int) {
+    private func playMedia(_ url: URL, cookies: [HTTPCookie], cmgState: CmgSessionState? = nil, channel: Channel, index: Int) {
         guard race.output != .native, cmgLoader == nil else { return }
         let loader: CmgAssetLoader?
         if H5eRuntime.needsDecryption(url) {
             loader = CmgAssetLoader(cookies: cookies, quality: quality)
             recordNative("已启动央视 H5E 原生解密通道")
-        } else if resolving, let state = resolver.cmgState, url.host?.hasSuffix("ysp.cctv.cn") == true {
+        } else if resolving, let state = cmgState ?? resolver.cmgState, url.host?.hasSuffix("ysp.cctv.cn") == true {
             loader = CmgAssetLoader(state: state, cookies: cookies, quality: quality)
             recordNative("已启动央视频原生解密通道")
         } else { loader = nil }
@@ -196,7 +217,7 @@ import UniformTypeIdentifiers
                         self.observation = nil; self.player.pause(); self.player.replaceCurrentItem(with: nil)
                         self.cmgLoader = nil; loader.cancel(); self.deferredH5eIndex = index
                         self.recordNative("央视直链最高实际 \(actual.description)，继续准备央视频高清线路（目标 \(requested.description)）")
-                        if let media = self.latestWebMedia { self.playMedia(media.url, cookies: media.cookies, channel: channel, index: index) }
+                        if let media = self.latestWebMedia { self.playMedia(media.url, cookies: media.cookies, cmgState: media.cmgState, channel: channel, index: index) }
                     }
                 }
             }
@@ -214,7 +235,16 @@ import UniformTypeIdentifiers
                     case .failure(let error):
                         self.recordNative("原生通道启动失败：" + error.localizedDescription)
                         self.race.failNative(self.race.token)
-                        if !self.resolving { self.failed(channel, index: index, message: error.localizedDescription) }
+                        if self.cmgLoader === loader { self.cmgLoader = nil }
+                        // A short-lived warmed session can expire between
+                        // discovery and playback. The foreground resolver is
+                        // already loading a fresh session; let its latest
+                        // result replace the failed cache immediately.
+                        if self.resolving, let media = self.latestWebMedia {
+                            self.playMedia(media.url, cookies: media.cookies, cmgState: media.cmgState, channel: channel, index: index)
+                        } else if !self.resolving {
+                            self.failed(channel, index: index, message: error.localizedDescription)
+                        }
                     }
                 }
             }
@@ -323,6 +353,7 @@ import UniformTypeIdentifiers
         }
         favorites = Set(UserDefaults.standard.stringArray(forKey: "favorites") ?? [])
         persistLibrary()
+        configureWarmup()
     }
     func play(_ channel: Channel) {
         timeout?.cancel(); observation = nil; resolver.cancel(); session = UUID(); webChannel = nil
@@ -337,10 +368,12 @@ import UniformTypeIdentifiers
         let saved = UserDefaults.standard.string(forKey: "line-" + channel.id)
         let index = channel.sources.firstIndex(where: { $0.absoluteString == saved }) ?? channel.sources.firstIndex(where: { $0.scheme != "webview" }) ?? 0
         start(channel, index: index)
+        configureWarmup()
     }
     func favorite(_ channel: Channel) {
         if favorites.contains(channel.id) { favorites.remove(channel.id) } else { favorites.insert(channel.id) }
         UserDefaults.standard.set(Array(favorites), forKey: "favorites")
+        configureWarmup()
     }
     private func persistLibrary() {
         if let data = try? JSONEncoder().encode(channelLists) { UserDefaults.standard.set(data, forKey: "channel-lists") }
@@ -374,6 +407,7 @@ import UniformTypeIdentifiers
             if favorites.remove(old.id) != nil { favorites.insert(refreshed.id) }
         }
         favorites.formIntersection(Set(channels.map(\.id)))
+        configureWarmup()
         guard selectedWasManaged, let previousSelected else { persistLibrary(); return }
         if let refreshed = channels.first(where: { $0.name == previousSelected.name && $0.group == previousSelected.group }) {
             self.selected = refreshed
@@ -638,6 +672,12 @@ struct ContentView: View {
             .frame(width: geometry.size.width, height: geometry.size.height)
         }
         .background(Color.sofaBackground)
+        .overlay(alignment: .bottomLeading) {
+            WarmupResolverHost(warmup: library.warmup)
+                .frame(width: 1, height: 1)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
         .ignoresSafeArea(.container, edges: .top)
         .background(MainWindowChrome(title: library.selected?.name ?? "沙发电视", onClose: library.stopPlayback).frame(width: 0, height: 0))
         .focusedSceneValue(\.channelLibrary, library)

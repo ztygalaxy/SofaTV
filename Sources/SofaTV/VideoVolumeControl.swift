@@ -5,14 +5,16 @@ import CoreText
 final class VideoVolumeControl: NSView {
     var onVolumeChanged: ((Float) -> Void)?
     var onToggleMute: (() -> Void)?
+    var onReload: (() -> Void)?
     var onToggleFullscreen: (() -> Void)?
     var onPointerActivity: (() -> Void)?
     var onTrackingChanged: ((Bool) -> Void)?
     var onScroll: ((NSEvent) -> Void)?
 
     private enum Layout {
-        static let size = NSSize(width: 300, height: 48)
+        static let size = NSSize(width: 336, height: 48)
         static let outerInset: CGFloat = 12
+        static let buttonGap: CGFloat = 4
         static let visibleGap: CGFloat = 14
         static let speakerHitSide: CGFloat = 32
         static let speakerVisibleWidth: CGFloat = 20
@@ -23,6 +25,7 @@ final class VideoVolumeControl: NSView {
         static let knobDiameter: CGFloat = 10
     }
 
+    private let reload = SymbolButton()
     private let speaker = SymbolButton()
     private let fullscreenButton = SymbolButton()
     private var fullscreenState: Bool?
@@ -34,9 +37,10 @@ final class VideoVolumeControl: NSView {
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
+        reload.target = self; reload.action = #selector(reloadChannel)
         speaker.target = self; speaker.action = #selector(toggleMute)
         fullscreenButton.target = self; fullscreenButton.action = #selector(toggleFullscreen)
-        addSubview(speaker); addSubview(slider); addSubview(percentage); addSubview(fullscreenButton)
+        addSubview(reload); addSubview(speaker); addSubview(slider); addSubview(percentage); addSubview(fullscreenButton)
         setAccessibilityElement(false)
         slider.onValueChanged = { [weak self] value in
             guard let self else { return }
@@ -46,7 +50,15 @@ final class VideoVolumeControl: NSView {
         slider.onPointerActivity = { [weak self] in self?.onPointerActivity?() }
         slider.onTrackingChanged = { [weak self] tracking in self?.onTrackingChanged?(tracking) }
         slider.onScroll = { [weak self] event in self?.onScroll?(event) }
-        for button in [speaker, fullscreenButton] {
+        reload.toolTip = "重新播放"; reload.setAccessibilityLabel("重新播放")
+        if let url = Bundle.main.url(forResource: "yuanxunhuan", withExtension: "svg", subdirectory: "PlaybackControls"),
+           let image = NSImage(contentsOf: url) {
+            reload.setImage(image)
+        } else {
+            // Keep development builds usable when launched without the app bundle.
+            reload.setSymbol("arrow.clockwise")
+        }
+        for button in [reload, speaker, fullscreenButton] {
             button.onPointerActivity = { [weak self] in self?.onPointerActivity?() }
             button.onTrackingChanged = { [weak self] tracking in self?.onTrackingChanged?(tracking) }
             button.onScroll = { [weak self] event in self?.onScroll?(event) }
@@ -68,6 +80,7 @@ final class VideoVolumeControl: NSView {
         updateReadout(audibleVolume, muted: muted)
     }
     @objc private func toggleMute() { onPointerActivity?(); onToggleMute?() }
+    @objc private func reloadChannel() { onPointerActivity?(); onReload?() }
     @objc private func toggleFullscreen() { onPointerActivity?(); onToggleFullscreen?() }
     func setFullscreen(_ fullscreen: Bool) {
         guard fullscreenState != fullscreen else { return }
@@ -94,7 +107,10 @@ final class VideoVolumeControl: NSView {
         fullscreenButton.frame = NSRect(x: bounds.maxX - Layout.outerInset - Layout.speakerHitSide,
                                         y: bounds.midY - Layout.speakerHitSide / 2,
                                         width: Layout.speakerHitSide, height: Layout.speakerHitSide)
-        let readoutX = fullscreenButton.frame.midX - Layout.speakerVisibleWidth / 2 - Layout.visibleGap - Layout.readoutWidth
+        reload.frame = NSRect(x: fullscreenButton.frame.minX - Layout.buttonGap - Layout.speakerHitSide,
+                              y: bounds.midY - Layout.speakerHitSide / 2,
+                              width: Layout.speakerHitSide, height: Layout.speakerHitSide)
+        let readoutX = reload.frame.midX - Layout.speakerVisibleWidth / 2 - Layout.visibleGap - Layout.readoutWidth
         percentage.frame = NSRect(x: readoutX, y: bounds.midY - Layout.readoutHeight / 2,
                                   width: Layout.readoutWidth, height: Layout.readoutHeight)
         slider.frame = NSRect(x: railLeft, y: bounds.midY - Layout.sliderHeight / 2,
@@ -108,7 +124,7 @@ final class VideoVolumeControl: NSView {
     }
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        if window == nil { speaker.cancelTracking(); fullscreenButton.cancelTracking(); slider.cancelTracking(); endBackgroundTracking() }
+        if window == nil { reload.cancelTracking(); speaker.cancelTracking(); fullscreenButton.cancelTracking(); slider.cancelTracking(); endBackgroundTracking() }
     }
     override func mouseEntered(with event: NSEvent) { onPointerActivity?() }
     override func mouseMoved(with event: NSEvent) { onPointerActivity?() }
@@ -152,6 +168,36 @@ final class VideoVolumeControl: NSView {
             if let cached = Self.icons[name] { icon = cached }
             else if let rendered = Self.renderSymbol(name) { Self.icons[name] = rendered; icon = rendered }
             needsDisplay = true
+        }
+        func setImage(_ image: NSImage) {
+            // Imported SVGs often include transparent view-box padding, while
+            // SF Symbols below are cropped to their ink bounds. Trim the SVG
+            // the same way so all three playback icons share a visual size.
+            icon = Self.trimTransparentPadding(from: image) ?? image
+            needsDisplay = true
+        }
+        private static func trimTransparentPadding(from image: NSImage) -> NSImage? {
+            let scale: CGFloat = 4
+            let width = max(1, Int(ceil(image.size.width * scale)))
+            let height = max(1, Int(ceil(image.size.height * scale)))
+            guard let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
+                                                bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                                colorSpaceName: .deviceRGB, bitmapFormat: [], bytesPerRow: width * 4, bitsPerPixel: 32),
+                  let context = NSGraphicsContext(bitmapImageRep: bitmap), let pixels = bitmap.bitmapData else { return nil }
+            NSGraphicsContext.saveGraphicsState(); NSGraphicsContext.current = context
+            let rect = NSRect(x: 0, y: 0, width: width, height: height)
+            context.cgContext.clear(rect)
+            image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
+            NSGraphicsContext.restoreGraphicsState()
+            var minX = width, minY = height, maxX = -1, maxY = -1
+            for y in 0..<height {
+                for x in 0..<width where pixels[y * bitmap.bytesPerRow + x * 4 + 3] > 0 {
+                    minX = min(minX, x); minY = min(minY, y); maxX = max(maxX, x); maxY = max(maxY, y)
+                }
+            }
+            guard maxX >= minX, maxY >= minY,
+                  let cropped = bitmap.cgImage?.cropping(to: CGRect(x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1)) else { return nil }
+            return NSImage(cgImage: cropped, size: NSSize(width: cropped.width, height: cropped.height))
         }
         private static func renderSymbol(_ name: String) -> NSImage? {
             guard let symbol = NSImage(systemSymbolName: name, accessibilityDescription: nil)?

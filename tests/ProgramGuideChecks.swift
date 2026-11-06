@@ -11,6 +11,111 @@ import Foundation
         catch { }
     }
 
+    private static func checkSupplementalGuides() throws {
+        let primary = try parse("""
+        <tv>
+          <channel id="primary-beijing"><display-name>北京卫视</display-name></channel>
+          <channel id="primary-hubei"><display-name>湖北卫视</display-name></channel>
+          <programme channel="primary-beijing" start="20261106230000 +0800" stop="20261107000000 +0800"><title>北京昨日节目</title></programme>
+          <programme channel="primary-hubei" start="20261106233030 +0800" stop="20261107004200 +0800"><title>湖北主源跨日节目</title></programme>
+        </tv>
+        """)
+        let fallback = try parse("""
+        <tv>
+          <channel id="backup-beijing"><display-name>北京卫视高清</display-name></channel>
+          <channel id="backup-hubei"><display-name>湖北卫视</display-name></channel>
+          <channel id="backup-guangdong"><display-name>广东卫视</display-name></channel>
+          <programme channel="backup-beijing" start="20261107000000 +0800" stop="20261107004000 +0800"><title>北京备用新日节目</title></programme>
+          <programme channel="backup-hubei" start="20261107000000 +0800" stop="20261107010000 +0800"><title>湖北备用节目</title></programme>
+          <programme channel="backup-guangdong" start="20261106234500 +0800" stop="20261107003500 +0800"><title>广东备用节目</title></programme>
+        </tv>
+        """)
+        let combined = primary.supplementing(with: fallback)
+        let midnight = date("2026-11-06T16:00:00Z")
+        let afterMidnight = date("2026-11-06T16:25:00Z")
+        precondition(combined.currentTitle(channel: channel("北京卫视"), at: midnight.addingTimeInterval(-1)) == "北京昨日节目")
+        precondition(combined.currentTitle(channel: channel("北京卫视"), at: midnight) == "北京备用新日节目")
+        precondition(combined.currentTitle(channel: channel("北京卫视"), at: afterMidnight) == "北京备用新日节目")
+        precondition(combined.currentTitle(channel: channel("湖北卫视"), at: afterMidnight) == "湖北主源跨日节目")
+        precondition(combined.currentTitle(channel: channel("广东卫视"), at: afterMidnight) == "广东备用节目")
+        precondition(combined.currentTitle(channel: channel("湖北卫视"), at: date("2026-11-06T16:42:00Z")) == "湖北备用节目")
+        precondition(combined.currentTitle(channel: channel("北京卫视"), at: date("2026-11-06T16:40:00Z")) == nil)
+        precondition(combined.nextChange(after: afterMidnight) == date("2026-11-06T16:35:00Z"))
+        precondition(combined.nextChange(after: date("2026-11-06T17:00:00Z")) == nil)
+
+        let futurePrimary = try parse("""
+        <tv><channel id="beijing"><display-name>北京卫视</display-name></channel>
+          <programme channel="beijing" start="20261107003000 +0800" stop="20261107010000 +0800"><title>北京主源恢复</title></programme>
+        </tv>
+        """)
+        let longFallback = try parse("""
+        <tv><channel id="backup"><display-name>北京卫视</display-name></channel>
+          <programme channel="backup" start="20261107000000 +0800" stop="20261107020000 +0800"><title>北京长时备用</title></programme>
+        </tv>
+        """)
+        let futureCombined = futurePrimary.supplementing(with: longFallback)
+        precondition(futureCombined.currentTitle(channel: channel("北京卫视"), at: afterMidnight) == "北京长时备用")
+        precondition(futureCombined.nextChange(after: afterMidnight) == date("2026-11-06T16:30:00Z"))
+        precondition(futureCombined.currentTitle(channel: channel("北京卫视"), at: date("2026-11-06T16:30:00Z")) == "北京主源恢复")
+        precondition(futureCombined.nextChange(after: date("2026-11-06T16:30:00Z")) == date("2026-11-06T17:00:00Z"))
+        precondition(futureCombined.currentTitle(channel: channel("北京卫视"), at: date("2026-11-06T17:00:00Z")) == "北京长时备用")
+
+        // Identical opaque IDs can mean different channels in different feeds.
+        let collisionPrimary = try parse("""
+        <tv><channel id="shared"><display-name>北京卫视</display-name></channel>
+          <programme channel="shared" start="20261106230000 +0800" stop="20261107000000 +0800"><title>北京过期主源</title></programme>
+        </tv>
+        """)
+        let collisionFallback = try parse("""
+        <tv>
+          <channel id="shared"><display-name>江苏卫视</display-name></channel>
+          <channel id="other"><display-name>北京卫视</display-name></channel>
+          <programme channel="shared" start="20261107000000 +0800" stop="20261107010000 +0800"><title>江苏备用</title></programme>
+          <programme channel="other" start="20261107000000 +0800" stop="20261107010000 +0800"><title>北京备用</title></programme>
+        </tv>
+        """)
+        let collisionCombined = collisionPrimary.supplementing(with: collisionFallback)
+        precondition(collisionCombined.currentTitle(channel: channel("北京卫视"), at: afterMidnight) == "北京备用")
+        precondition(collisionCombined.currentTitle(channel: channel("江苏卫视"), at: afterMidnight) == "江苏备用")
+        precondition(collisionPrimary.currentTitle(channel: channel("江苏卫视"), at: midnight.addingTimeInterval(-1)) == nil)
+
+        let europeFallback = try parse("""
+        <tv><channel id="eu"><display-name>CCTV4欧洲</display-name></channel>
+          <programme channel="eu" start="20261107000000 +0800" stop="20261107010000 +0800"><title>欧洲备用</title></programme>
+        </tv>
+        """)
+        let regions = primary.supplementing(with: europeFallback)
+        precondition(regions.currentTitle(channel: channel("CCTV-4 中文国际（欧）"), at: afterMidnight) == "欧洲备用")
+        precondition(regions.currentTitle(channel: channel("未知台", epgID: "CCTV4E"), at: afterMidnight) == "欧洲备用")
+        for name in ["CCTV4", "CCTV4美洲", "CCTV4K", "CCTV8K"] {
+            precondition(regions.currentTitle(channel: channel(name), at: afterMidnight) == nil)
+        }
+
+        let third = try parse("""
+        <tv><channel id="beijing"><display-name>北京卫视</display-name></channel>
+          <programme channel="beijing" start="20261107000000 +0800" stop="20261107030000 +0800"><title>第三来源</title></programme>
+        </tv>
+        """)
+        let layered = primary.supplementing(with: fallback).supplementing(with: third)
+        precondition(layered.currentTitle(channel: channel("北京卫视"), at: afterMidnight) == "北京备用新日节目")
+        precondition(layered.currentTitle(channel: channel("北京卫视"), at: date("2026-11-06T16:40:00Z")) == "第三来源")
+        let nested = primary.supplementing(with: fallback.supplementing(with: third))
+        precondition(nested.currentTitle(channel: channel("北京卫视"), at: date("2026-11-06T16:40:00Z")) == "第三来源")
+
+        let restored = try JSONDecoder().decode(ProgramGuide.self, from: JSONEncoder().encode(layered))
+        precondition(restored.currentProgram(channel: channel("北京卫视"), at: afterMidnight) == layered.currentProgram(channel: channel("北京卫视"), at: afterMidnight))
+        precondition(restored.currentTitle(channel: channel("湖北卫视"), at: afterMidnight) == "湖北主源跨日节目")
+        precondition(restored.currentTitle(channel: channel("北京卫视"), at: date("2026-11-06T16:40:00Z")) == "第三来源")
+        precondition(restored.nextChange(after: afterMidnight) == layered.nextChange(after: afterMidnight))
+        let legacy: [String: Any] = [
+            "programsByChannel": ["legacy": [["start": midnight.timeIntervalSinceReferenceDate, "end": afterMidnight.timeIntervalSinceReferenceDate, "title": "旧缓存节目"]]],
+            "channelByAlias": ["LEGACY": "legacy"]
+        ]
+        let oldGuide = try JSONDecoder().decode(ProgramGuide.self, from: JSONSerialization.data(withJSONObject: legacy))
+        precondition(oldGuide.currentTitle(channel: channel("legacy"), at: midnight) == "旧缓存节目")
+        precondition(oldGuide.supplementing(with: fallback).currentTitle(channel: channel("北京卫视"), at: afterMidnight) == "北京备用新日节目")
+    }
+
     static func main() throws {
         let now = date("2026-11-06T10:30:00Z")
         let channels = [
@@ -166,7 +271,8 @@ import Foundation
         precondition(ChannelCatalog.merge([identified], into: [withoutID])[0].epgID == "opaque-cn1")
         var conflicting = identified; conflicting.epgID = "another-id"
         precondition(ChannelCatalog.merge([conflicting], into: [identified])[0].epgID == "opaque-cn1")
-        print("Program guide parsing, matching, time boundaries, caching and M3U compatibility passed")
+        try checkSupplementalGuides()
+        print("Program guide parsing, matching, time boundaries, fallback priority, caching and M3U compatibility passed")
 
         if CommandLine.arguments.count > 1 {
             let liveGuide = try ProgramGuide.parse(Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[1])))
