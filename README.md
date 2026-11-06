@@ -39,6 +39,7 @@
     <td align="center"><strong>播放中</strong><br><sub>选中频道后直接进入原生播放</sub></td>
   </tr>
 </table>
+
 <table>
   <tr>
     <td width="50%" align="center"><img src="docs/images/dock-idle.png" width="50" alt="未播放时的 Dock 图标"></td>
@@ -49,6 +50,7 @@
     <td align="center"><strong>播放中</strong><br><sub>右上角显示当前频道台标</sub></td>
   </tr>
 </table>
+
 ## 功能介绍
 
 - **原生 macOS 体验**：SwiftUI + AppKit 界面，深色外观、可调整侧栏、窗口布局记忆和独立视频全屏。
