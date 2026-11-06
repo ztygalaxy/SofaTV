@@ -1,0 +1,3 @@
+#EXTM3U
+#EXTINF:-1 group-title="解析验证",后台网页解析测试
+webview://http://127.0.0.1:18765/index.html

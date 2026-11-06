@@ -1,0 +1,5 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Preserve vendored source formatting and keep it separate in repository statistics.
+vendor/** -whitespace linguist-vendored

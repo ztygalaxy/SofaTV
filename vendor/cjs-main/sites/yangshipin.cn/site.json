@@ -1,0 +1,21 @@
+{
+  "id": "yangshipin.cn",
+  "module": "yangshipin",
+  "alias": "cmg",
+  "version": 2,
+  "hosts": [
+    "yangshipin.cn"
+  ],
+  "engine": "legacy-ysp",
+  "qualities": {
+    "high": "fhd",
+    "medium": "shd",
+    "low": "hd"
+  },
+  "playback": {
+    "page": "https://yangshipin.cn/tv/home?pid={id}",
+    "parameters": {
+      "id": "[0-9]{1,20}"
+    }
+  }
+}

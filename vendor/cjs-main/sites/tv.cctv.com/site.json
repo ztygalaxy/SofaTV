@@ -1,0 +1,22 @@
+{
+  "id": "tv.cctv.com",
+  "module": "cctv",
+  "alias": "cctv",
+  "version": 3,
+  "hosts": [
+    "tv.cctv.com"
+  ],
+  "engine": "hls",
+  "qualities": {
+    "high": "high",
+    "medium": "medium",
+    "low": "low"
+  },
+  "entry": "main.js",
+  "playback": {
+    "page": "https://tv.cctv.com/live/{id}/",
+    "parameters": {
+      "id": "[a-zA-Z0-9]{1,64}"
+    }
+  }
+}

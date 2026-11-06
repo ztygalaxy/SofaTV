@@ -1,0 +1,127 @@
+import Foundation
+
+struct Channel: Identifiable, Codable, Hashable, Sendable {
+    var id: String { url.absoluteString }
+    var alternatives: [URL]? = nil
+    var sources: [URL] { [url] + (alternatives ?? []) }
+    var name: String
+    var group: String
+    var url: URL
+    var epgID: String? = nil
+
+    func removing(_ source: URL) -> Channel? {
+        let remaining = sources.filter { $0 != source }
+        guard let first = remaining.first else { return nil }
+        return Channel(
+            alternatives: remaining.count > 1 ? Array(remaining.dropFirst()) : nil,
+            name: name,
+            group: group,
+            url: first,
+            epgID: epgID
+        )
+    }
+}
+
+struct ChannelList: Identifiable, Codable, Hashable {
+    enum Kind: String, Codable { case builtIn, file, online, legacy }
+    let id: String
+    var name: String
+    var detail: String
+    var kind: Kind
+    var importedAt: Date
+    var channels: [Channel]
+
+    static func builtIn() -> ChannelList {
+        ChannelList(id: "builtin", name: "内置频道", detail: "随应用提供", kind: .builtIn, importedAt: Date(), channels: [])
+    }
+    static func file(_ url: URL) -> ChannelList {
+        ChannelList(id: "file:" + url.standardizedFileURL.path, name: url.deletingPathExtension().lastPathComponent, detail: url.lastPathComponent, kind: .file, importedAt: Date(), channels: [])
+    }
+    static func online(_ url: URL) -> ChannelList {
+        ChannelList(id: "online:" + url.absoluteString, name: url.host ?? "在线频道列表", detail: url.absoluteString, kind: .online, importedAt: Date(), channels: [])
+    }
+    static func legacy(_ channels: [Channel]) -> ChannelList {
+        ChannelList(id: "legacy", name: "现有频道", detail: "升级前保存的频道", kind: .legacy, importedAt: Date(), channels: channels)
+    }
+}
+
+enum ChannelCatalog {
+    static func parse(_ text: String) throws -> [Channel] {
+        var result: [Channel] = []; var name = ""; var group = "未分组"; var epgID: String?
+        for raw in text.components(separatedBy: .newlines) {
+            let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if line.hasPrefix("#EXTINF:") {
+                name = line.components(separatedBy: ",").dropFirst().joined(separator: ",")
+                if let value = attribute("group-title", in: line) { group = value }
+                epgID = attribute("tvg-id", in: line)
+            } else if !line.isEmpty && !line.hasPrefix("#") {
+                let parts = line.components(separatedBy: ",")
+                if parts.count > 1 && parts[1] == "#genre#" { group = parts[0]; epgID = nil; continue }
+                let address = parts.count > 1 ? parts.dropFirst().joined(separator: ",") : line
+                if let url = URL(string: address), ["http", "https", "webview"].contains(url.scheme?.lowercased() ?? "") {
+                    result.append(Channel(name: parts.count > 1 ? parts[0] : (name.isEmpty ? url.lastPathComponent : name), group: group, url: url, epgID: epgID)); name = ""
+                }
+                epgID = nil
+            }
+        }
+        result = merge(result, into: [])
+        guard !result.isEmpty else { throw NSError(domain: "SofaTV", code: 1, userInfo: [NSLocalizedDescriptionKey: "没有找到可播放的 HTTP/HTTPS 频道，请导入 M3U 或 TXT 列表。直接播放地址请使用“打开直播”。"]) }
+        return result
+    }
+
+    private static func attribute(_ name: String, in line: String) -> String? {
+        let pattern = #"(?:^|\s)"# + NSRegularExpression.escapedPattern(for: name) + #"\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s,]+))"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+              let match = regex.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) else { return nil }
+        for index in 1...3 {
+            if let range = Range(match.range(at: index), in: line) {
+                let value = line[range].trimmingCharacters(in: .whitespacesAndNewlines)
+                return value.isEmpty ? nil : value
+            }
+        }
+        return nil
+    }
+
+    static func merge(_ lists: [ChannelList]) -> [Channel] {
+        lists.reduce(into: []) { $0 = merge($1.channels, into: $0) }
+    }
+
+    static func merge(_ incoming: [Channel], into existing: [Channel]) -> [Channel] {
+        var merged = existing
+        for channel in incoming {
+            if let index = merged.firstIndex(where: { $0.name == channel.name && $0.group == channel.group }) {
+                if merged[index].epgID?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+                    merged[index].epgID = channel.epgID
+                }
+                let additions = channel.sources.filter { !merged[index].sources.contains($0) }
+                if !additions.isEmpty { merged[index].alternatives = (merged[index].alternatives ?? []) + additions }
+            } else { merged.append(channel) }
+        }
+        return merged
+    }
+
+    static func deletingChannel(_ channel: Channel, from lists: [ChannelList]) -> [ChannelList] {
+        lists.map { list in
+            var list = list
+            list.channels.removeAll { $0.name == channel.name && $0.group == channel.group }
+            return list
+        }
+    }
+
+    static func deletingSource(_ source: URL, from channel: Channel, in lists: [ChannelList]) -> [ChannelList] {
+        lists.map { list in
+            var list = list
+            list.channels = list.channels.compactMap { candidate in
+                guard candidate.name == channel.name, candidate.group == channel.group else { return candidate }
+                return candidate.removing(source)
+            }
+            return list
+        }
+    }
+
+    static func deletingGroup(_ group: String, from lists: [ChannelList]) -> [ChannelList] {
+        lists.map { list in
+            var list = list; list.channels.removeAll { $0.group == group }; return list
+        }
+    }
+}

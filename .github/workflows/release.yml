@@ -1,0 +1,152 @@
+name: SofaTV macOS release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_notes:
+        description: 更新说明
+        required: false
+        type: string
+      publish:
+        description: 构建完成后发布 GitHub Release
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sofatv-release-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-26
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Run core checks
+        run: ./scripts/test-core.sh
+      - name: Build application
+        run: ./scripts/build-app.sh
+      - name: Verify and package application
+        run: |
+          version="$(tr -d '[:space:]' < VERSION)"
+          test "$(lipo -archs 'dist/沙发电视.app/Contents/MacOS/SofaTV')" = '${{ matrix.arch }}'
+          codesign --verify --deep --strict 'dist/沙发电视.app'
+          ditto -c -k --sequesterRsrc --keepParent \
+            'dist/沙发电视.app' "dist/SofaTV-$version-${{ matrix.arch }}.zip"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sofatv-macos-${{ matrix.arch }}
+          path: dist/SofaTV-*.zip
+          if-no-files-found: error
+
+  release-artifacts:
+    needs: macos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: sofatv-macos-*
+          path: dist
+          merge-multiple: true
+      - name: Generate manifest, source archive and checksums
+        env:
+          RELEASE_NOTES: ${{ inputs.release_notes || '' }}
+        run: |
+          version="$(tr -d '[:space:]' < VERSION)"
+          bash scripts/generate-update-manifest.sh dist
+          git archive --format=tar.gz --prefix="SofaTV-$version-source/" \
+            -o "dist/SofaTV-$version-source.tar.gz" HEAD
+          (cd dist && sha256sum SofaTV-*.zip SofaTV-*-source.tar.gz update.json > SHA256SUMS)
+          jq . dist/update.json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sofatv-release
+          path: |
+            dist/SofaTV-*.zip
+            dist/SofaTV-*-source.tar.gz
+            dist/update.json
+            dist/SHA256SUMS
+          if-no-files-found: error
+
+  publish:
+    needs: release-artifacts
+    if: github.repository == 'ztygalaxy/SofaTV' && github.ref == 'refs/heads/main' && inputs.publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: sofatv-release
+          path: dist
+      - name: Validate release payload
+        id: version
+        run: |
+          version="$(jq -er '.version | select(test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))' dist/update.json)"
+          test -f "dist/SofaTV-$version-arm64.zip"
+          test -f "dist/SofaTV-$version-x86_64.zip"
+          test -f "dist/SofaTV-$version-source.tar.gz"
+          (cd dist && sha256sum -c SHA256SUMS)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          tag="v$VERSION"
+          jq -r .notes dist/update.json > "$RUNNER_TEMP/release-notes.md"
+          if gh release view "$tag" --json isDraft --jq .isDraft >/tmp/draft 2>/dev/null; then
+            test "$(cat /tmp/draft)" = true || { echo "Release $tag is already published." >&2; exit 1; }
+          else
+            gh release create "$tag" --draft --title "沙发电视 $VERSION" \
+              --notes-file "$RUNNER_TEMP/release-notes.md"
+          fi
+          gh release upload "$tag" dist/SofaTV-* dist/update.json dist/SHA256SUMS --clobber
+          gh release edit "$tag" --draft=false --prerelease=false --latest \
+            --title "沙发电视 $VERSION" --notes-file "$RUNNER_TEMP/release-notes.md"
+
+  bump-version:
+    needs: publish
+    if: always() && !cancelled() && needs.publish.result == 'success' && github.repository == 'ztygalaxy/SofaTV' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Advance to the next patch version
+        env:
+          RELEASED_VERSION: ${{ needs.publish.outputs.version }}
+        run: |
+          current="$(tr -d '[:space:]' < VERSION)"
+          if [[ "$current" != "$RELEASED_VERSION" ]]; then
+            echo "Version is already $current; released $RELEASED_VERSION, so no bump is needed."
+            exit 0
+          fi
+          [[ "$current" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          IFS=. read -r major minor patch <<< "$current"
+          next="$major.$minor.$((10#$patch + 1))"
+          printf '%s\n' "$next" > VERSION
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add VERSION
+          git commit -m "code: prepare SofaTV $next."
+          git push origin HEAD:main
