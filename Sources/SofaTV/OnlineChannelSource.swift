@@ -1,24 +1,16 @@
 import Foundation
 
 enum OnlineChannelSource {
-    // Keep the old source ID so existing source windows and preferences survive migration.
-    static let defaultID = "builtin"
     static let defaultURL = URL(string: "https://raw.githubusercontent.com/TvWasm/cjs/main/cmg.m3u")!
 
-    static func defaultList() -> ChannelList {
-        ChannelList(id: defaultID, name: "默认频道", detail: defaultURL.absoluteString,
-                    kind: .online, importedAt: Date(), channels: [])
-    }
-
-    static func migrate(_ lists: [ChannelList], addDefault: Bool) -> [ChannelList] {
-        var lists = lists.map { list in
+    // Keep existing source IDs and cached channels, but never add a source on launch.
+    static func migrate(_ lists: [ChannelList]) -> [ChannelList] {
+        lists.map { list in
             guard list.kind == .builtIn else { return list }
             var migrated = list
             migrated.kind = .online; migrated.name = "默认频道"; migrated.detail = defaultURL.absoluteString
             return migrated
         }
-        if addDefault, !lists.contains(where: { $0.id == defaultID }) { lists.insert(defaultList(), at: 0) }
-        return lists
     }
 
     /// Only translate known playlist references. Never download or execute remote plugins.

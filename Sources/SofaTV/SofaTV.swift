@@ -375,22 +375,14 @@ import WebKit
             channelLists = [.legacy(saved)]; channels = saved
         }
         favorites = Set(defaults.stringArray(forKey: "favorites") ?? [])
-        channelLists = OnlineChannelSource.migrate(channelLists,
-            addDefault: !defaults.bool(forKey: "online-default-initialized"))
+        channelLists = OnlineChannelSource.migrate(channelLists)
         channels = ChannelCatalog.merge(channelLists)
         persistLibrary()
-        defaults.set(true, forKey: "online-default-initialized")
         configureWarmup()
     }
     func startOnlineUpdates() {
         guard !startedSourceUpdates else { return }
         startedSourceUpdates = true
-        refreshOnlineChannels()
-    }
-    func addDefaultChannels() {
-        guard !channelLists.contains(where: { $0.id == OnlineChannelSource.defaultID }) else { return }
-        channelLists.insert(OnlineChannelSource.defaultList(), at: 0)
-        persistLibrary()
         refreshOnlineChannels()
     }
     func refreshOnlineChannels(listID: String? = nil, restoreRemoved: Bool = false) {
@@ -717,16 +709,12 @@ struct ContentView: View {
                                 library.updatingSourceIDs.isEmpty ? "暂无频道" : "正在获取频道…",
                                 systemImage: "tv",
                                 description: library.sourceUpdateErrors.isEmpty
-                                    ? "也可以从“频道”菜单导入自己的列表"
+                                    ? "请从‘频道’菜单导入频道列表"
                                     : "更新未成功，请重试或导入自己的列表"
                             )
-                            if library.updatingSourceIDs.isEmpty {
-                                HStack {
-                                    Button("重试") { library.refreshOnlineChannels() }
-                                        .disabled(!library.channelLists.contains { $0.remoteURL != nil })
-                                    Button("导入列表…") { library.importChannels() }
-                                }
-                            } else { ProgressView().controlSize(.small) }
+                            if !library.updatingSourceIDs.isEmpty {
+                                ProgressView().controlSize(.small)
+                            }
                         }
                         .padding(.bottom, 20)
                     } else if snapshot.channelCount == 0 {

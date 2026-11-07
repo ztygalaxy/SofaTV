@@ -27,7 +27,9 @@ extension Library {
         let id = "address-\(ObjectIdentifier(self))-\(direct)"
         let title = direct ? "打开直播地址" : "导入在线频道列表"
         AppWindows.shared.show(id: id, title: title, size: NSSize(width: 420, height: 124), titleVisible: true, content:
-            ChannelAddressView(label: direct ? "直播地址" : "频道列表地址", onOpen: { [weak self] address in
+            ChannelAddressView(label: direct ? "直播地址" : "频道列表地址",
+                initialAddress: direct ? "" : OnlineChannelSource.defaultURL.absoluteString,
+                onOpen: { [weak self] address in
                 AppWindows.shared.close(id: id)
                 Task { await self?.load(address, direct: direct) }
             }, onClose: { AppWindows.shared.close(id: id) })
@@ -76,8 +78,13 @@ private struct ChannelAddressView: View {
     let label: String
     let onOpen: (String) -> Void
     let onClose: () -> Void
-    @ViewState private var address = ""
+    @ViewState private var address: String
     @FocusState private var addressFocused: Bool
+
+    init(label: String, initialAddress: String = "", onOpen: @escaping (String) -> Void, onClose: @escaping () -> Void) {
+        self.label = label; self.onOpen = onOpen; self.onClose = onClose
+        _address = ViewState(initialValue: initialAddress)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {

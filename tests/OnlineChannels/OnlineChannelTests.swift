@@ -43,8 +43,11 @@ struct OnlineChannelTests {
         init() { defaults = UserDefaults(suiteName: name)! }
         func clean() { defaults.removePersistentDomain(forName: name) }
     }
-    private func library(_ preferences: Preferences, fixture: SourceFixture) -> Library {
-        Library(defaults: preferences.defaults, channelRepository: OnlineChannelRepository(loader: { try await fixture.load($0) }),
+    private func library(_ preferences: Preferences, fixture: SourceFixture, hasImportedSource: Bool = true) throws -> Library {
+        if hasImportedSource, preferences.defaults.data(forKey: "channel-lists") == nil {
+            preferences.defaults.set(try JSONEncoder().encode([ChannelList.online(OnlineChannelSource.defaultURL)]), forKey: "channel-lists")
+        }
+        return Library(defaults: preferences.defaults, channelRepository: OnlineChannelRepository(loader: { try await fixture.load($0) }),
                 warmsChannels: false)
     }
     private func settle(_ library: Library) async throws {
@@ -77,17 +80,20 @@ struct OnlineChannelTests {
         #expect(txt[0].name == "测试台" && txt[0].group == "新闻")
     }
 
-    @Test func firstLaunchDownloadsAndRestoresLocalCopy() async throws {
+    @Test func firstLaunchStaysEmptyUntilUserImports() async throws {
         let preferences = Preferences(); defer { preferences.clean() }
         let fixture = SourceFixture(Self.playlist)
-        let app = library(preferences, fixture: fixture)
-        #expect(app.channels.isEmpty && app.channelLists[0].remoteURL == OnlineChannelSource.defaultURL)
+        let app = try library(preferences, fixture: fixture, hasImportedSource: false)
+        #expect(app.channels.isEmpty && app.channelLists.isEmpty)
         app.startOnlineUpdates(); app.startOnlineUpdates()
         try await settle(app)
+        #expect(await fixture.requests.isEmpty)
+        #expect(app.channelLists.isEmpty)
+        await app.load(OnlineChannelSource.defaultURL.absoluteString, direct: false)
         #expect(app.channels.count == 2)
         #expect(await fixture.requests.count == 1)
         #expect(app.channelLists[0].lastCheckedAt != nil)
-        let restarted = library(preferences, fixture: fixture)
+        let restarted = try library(preferences, fixture: fixture)
         #expect(restarted.channels == app.channels)
         #expect(restarted.channelLists[0].eTag == "\"version-1\"")
         await fixture.configure(failing: true)
@@ -100,8 +106,9 @@ struct OnlineChannelTests {
     @Test func conditionalRequestsAndManualRestore() async throws {
         let fixture = SourceFixture(Self.playlist)
         let repository = OnlineChannelRepository(loader: { try await fixture.load($0) })
-        let first = try await repository.refresh(OnlineChannelSource.defaultList())
-        let cached = first.applying(to: OnlineChannelSource.defaultList())
+        let list = ChannelList.online(OnlineChannelSource.defaultURL)
+        let first = try await repository.refresh(list)
+        let cached = first.applying(to: list)
         await fixture.configure(status: 304)
         let unchanged = try await repository.refresh(cached)
         #expect(unchanged.channels == nil)
@@ -114,11 +121,11 @@ struct OnlineChannelTests {
         #expect(await fixture.requests.last?.value(forHTTPHeaderField: "If-None-Match") == nil)
     }
 
-    @Test func firstDownloadFailureCanRetry() async throws {
+    @Test func failedRefreshCanRetry() async throws {
         let preferences = Preferences(); defer { preferences.clean() }
         let fixture = SourceFixture(Self.playlist)
         await fixture.configure(failing: true)
-        let app = library(preferences, fixture: fixture)
+        let app = try library(preferences, fixture: fixture)
         app.startOnlineUpdates(); try await settle(app)
         #expect(app.channels.isEmpty && app.channelLists[0].lastCheckedAt == nil)
         #expect(!app.sourceUpdateErrors.isEmpty)
@@ -134,7 +141,7 @@ struct OnlineChannelTests {
         let old = Channel(name: "自定义频道", group: "个人", url: URL(string: "https://example.com/old.m3u8")!)
         var own = ChannelList.online(ownURL); own.channels = [old]
         var file = ChannelList.file(URL(fileURLWithPath: "/private/tmp/own.m3u")); file.channels = [old]
-        preferences.defaults.set(try JSONEncoder().encode([own, file]), forKey: "channel-lists")
+        preferences.defaults.set(try JSONEncoder().encode([ChannelList.online(OnlineChannelSource.defaultURL), own, file]), forKey: "channel-lists")
         let repository = OnlineChannelRepository(loader: { request in
             if request.url == ownURL { throw URLError(.notConnectedToInternet) }
             return try await fixture.load(request)
@@ -158,7 +165,7 @@ struct OnlineChannelTests {
         preferences.defaults.set(0.65, forKey: "volume-" + old.id)
         preferences.defaults.set(old.url.absoluteString, forKey: "line-" + old.id)
         let fixture = SourceFixture(Self.playlist)
-        let app = library(preferences, fixture: fixture)
+        let app = try library(preferences, fixture: fixture)
         #expect(app.channels == [old] && app.channelLists[0].kind == .online)
         app.selected = old; app.playbackStatus = "正在播放测试节目"
         app.startOnlineUpdates()
@@ -180,17 +187,18 @@ struct OnlineChannelTests {
     @Test func refreshReplacesOldLinesAndKeepsUserRemovals() async throws {
         let preferences = Preferences(); defer { preferences.clean() }
         let fixture = SourceFixture(Self.playlist)
-        let app = library(preferences, fixture: fixture)
+        let app = try library(preferences, fixture: fixture)
         app.startOnlineUpdates(); try await settle(app)
         let cctv = app.channels[0], beijing = app.channels[1]
-        app.deleteSource(cctv.url, from: cctv, fromList: OnlineChannelSource.defaultID)
-        app.deleteChannel(beijing, fromList: OnlineChannelSource.defaultID)
+        let sourceID = try #require(app.channelLists.first?.id)
+        app.deleteSource(cctv.url, from: cctv, fromList: sourceID)
+        app.deleteChannel(beijing, fromList: sourceID)
         app.refreshOnlineChannels(); try await settle(app)
         #expect(app.channels.count == 1 && app.channels[0].sources == [cctv.sources[1]])
-        let restarted = library(preferences, fixture: fixture)
+        let restarted = try library(preferences, fixture: fixture)
         restarted.startOnlineUpdates(); try await settle(restarted)
         #expect(restarted.channels == app.channels)
-        restarted.refreshOnlineChannels(listID: OnlineChannelSource.defaultID, restoreRemoved: true)
+        restarted.refreshOnlineChannels(listID: sourceID, restoreRemoved: true)
         try await settle(restarted)
         #expect(restarted.channels.count == 2 && restarted.channels[0].sources.count == 2)
         restarted.deleteGroup("卫视频道")
@@ -204,7 +212,7 @@ struct OnlineChannelTests {
     @Test func failedRefreshDoesNotReplaceGoodData() async throws {
         let preferences = Preferences(); defer { preferences.clean() }
         let fixture = SourceFixture(Self.playlist)
-        let app = library(preferences, fixture: fixture)
+        let app = try library(preferences, fixture: fixture)
         app.startOnlineUpdates(); try await settle(app)
         let saved = app.channelLists
         for (text, status) in [("", 200), ("<html>Error</html>", 200), (Self.playlist, 500),
@@ -220,21 +228,24 @@ struct OnlineChannelTests {
         let preferences = Preferences(); defer { preferences.clean() }
         let fixture = SourceFixture(Self.playlist)
         await fixture.configure(blocked: true)
-        let app = library(preferences, fixture: fixture)
+        let app = try library(preferences, fixture: fixture)
         app.startOnlineUpdates(); try await waitForRequest(fixture)
         app.deleteList(app.channelLists[0])
         await fixture.release(); try await settle(app)
         #expect(app.channelLists.isEmpty && app.channels.isEmpty)
-        let restarted = library(preferences, fixture: fixture)
+        let restarted = try library(preferences, fixture: fixture)
         #expect(restarted.channelLists.isEmpty)
-        restarted.addDefaultChannels(); try await settle(restarted)
+        restarted.startOnlineUpdates(); try await settle(restarted)
+        #expect(restarted.channelLists.isEmpty)
+        #expect(await fixture.requests.count == 1)
+        await restarted.load(OnlineChannelSource.defaultURL.absoluteString, direct: false)
         #expect(restarted.channels.count == 2)
     }
 
     @Test func removalDuringDownloadIsAppliedToNewData() async throws {
         let preferences = Preferences(); defer { preferences.clean() }
         let fixture = SourceFixture(Self.playlist)
-        let app = library(preferences, fixture: fixture)
+        let app = try library(preferences, fixture: fixture)
         app.startOnlineUpdates(); try await settle(app)
         await fixture.configure(blocked: true)
         app.refreshOnlineChannels()
@@ -246,7 +257,7 @@ struct OnlineChannelTests {
 
     @Test func liveDefaultSource() async throws {
         guard ProcessInfo.processInfo.environment["SOFATV_TEST_LIVE_SOURCE"] == "1" else { return }
-        let result = try await OnlineChannelRepository().refresh(OnlineChannelSource.defaultList())
+        let result = try await OnlineChannelRepository().refresh(.online(OnlineChannelSource.defaultURL))
         let channels = try #require(result.channels)
         #expect(channels.count > 20)
         #expect(channels.allSatisfy { $0.sources.allSatisfy { $0.pathExtension != "cjs" } })

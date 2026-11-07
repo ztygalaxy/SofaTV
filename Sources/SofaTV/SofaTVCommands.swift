@@ -41,10 +41,6 @@ private struct ChannelSourceMenu: View {
             library.refreshOnlineChannels()
         }
         .disabled(!library.updatingSourceIDs.isEmpty || !library.channelLists.contains { $0.remoteURL != nil })
-        if !library.channelLists.contains(where: { $0.id == OnlineChannelSource.defaultID }) {
-            Button("添加默认频道") { library.addDefaultChannels() }
-                .disabled(!library.updatingSourceIDs.isEmpty)
-        }
     }
 }
 
