@@ -1,6 +1,11 @@
 import AppKit
 import UpdateSupport
 
+// The opaque OS token is transferred once; file operations remain on MainActor.
+private struct ReplacementAuthorization: @unchecked Sendable {
+    let value: NSWorkspace.Authorization
+}
+
 // The helper lives outside the application bundle while it replaces that bundle.
 // The player exits only after the helper has validated the request and is ready.
 @MainActor
@@ -20,8 +25,16 @@ final class Installer {
         try UpdateInstallation.validateDestination(request.destination)
         let parent = request.destination.deletingLastPathComponent()
         if !fileManager.isWritableFile(atPath: parent.path) || !fileManager.isWritableFile(atPath: request.destination.path) {
-            let authorization = try await NSWorkspace.shared.requestAuthorization(to: .replaceFile)
-            fileManager = FileManager(authorization: authorization)
+            let authorization = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<ReplacementAuthorization, Error>) in
+                NSWorkspace.shared.requestAuthorization(to: .replaceFile) { authorization, error in
+                    if let authorization {
+                        continuation.resume(returning: ReplacementAuthorization(value: authorization))
+                    } else {
+                        continuation.resume(throwing: error ?? CocoaError(.userCancelled))
+                    }
+                }
+            }
+            fileManager = FileManager(authorization: authorization.value)
         }
         guard request.parentPID > 1, kill(request.parentPID, 0) == 0 else {
             throw UpdateInstallationError.application

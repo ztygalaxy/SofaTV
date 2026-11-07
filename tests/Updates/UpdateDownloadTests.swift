@@ -6,7 +6,9 @@ struct UpdateDownloadTests {
     func run() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("SofaTV.DownloadTests.\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }
-        let app = try UpdateInstallationTests().fixture(in: root.appendingPathComponent("new"), version: "0.0.4")
+        let original = try UpdateInstallationTests().fixture(in: root.appendingPathComponent("new"), version: "0.0.4")
+        let app = original.deletingLastPathComponent().appendingPathComponent("SofaTV-0.0.4-arm64.app")
+        try FileManager.default.moveItem(at: original, to: app)
         let archive = root.appendingPathComponent("update.zip")
         let zip = Process()
         zip.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
@@ -40,7 +42,7 @@ struct UpdateDownloadTests {
         defer { server.terminate(); server.waitUntilExit() }
         let port = String(decoding: pipe.fileHandleForReading.availableData, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
         func update(path: String = "update.zip", checksum: String? = nil) -> VerifiedUpdate {
-            VerifiedUpdate(version: SemanticVersion("0.0.4")!, notes: "", asset: UpdateAsset(name: "update.zip", sha256: checksum ?? hash),
+            VerifiedUpdate(version: SemanticVersion("0.0.4")!, notes: "", asset: UpdateAsset(name: "SofaTV-0.0.4-arm64.zip", sha256: checksum ?? hash),
                            downloadURL: URL(string: "http://127.0.0.1:\(port)/\(path)")!, releaseURL: URL(string: "https://example.com")!)
         }
         func workspace() throws -> URL {

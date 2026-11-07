@@ -59,11 +59,12 @@ public enum UpdateInstallation {
         }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
         _ = try run("/usr/bin/ditto", ["-x", "-k", archive.path, directory.path])
+        let applicationName = archive.deletingPathExtension().lastPathComponent + ".app"
         let names = try FileManager.default.contentsOfDirectory(atPath: directory.path)
-        guard names.contains("沙发电视.app"), names.allSatisfy({ ["沙发电视.app", "__MACOSX", ".DS_Store"].contains($0) }) else {
+        guard names.contains(applicationName), names.allSatisfy({ [applicationName, "__MACOSX", ".DS_Store"].contains($0) }) else {
             throw UpdateInstallationError.archive
         }
-        let application = directory.appendingPathComponent("沙发电视.app", isDirectory: true)
+        let application = directory.appendingPathComponent(applicationName, isDirectory: true)
         try validateApplication(application, version: version)
         return application
     }

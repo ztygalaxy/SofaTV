@@ -38,16 +38,13 @@ jobs:
       - name: Build application
         run: ./scripts/build-app.sh
       - name: Verify and package application
-        run: |
-          version="$(tr -d '[:space:]' < VERSION)"
-          test "$(lipo -archs 'dist/沙发电视.app/Contents/MacOS/SofaTV')" = '${{ matrix.arch }}'
-          codesign --verify --deep --strict 'dist/沙发电视.app'
-          ditto -c -k --sequesterRsrc --keepParent \
-            'dist/沙发电视.app' "dist/SofaTV-$version-${{ matrix.arch }}.zip"
+        run: ./scripts/package-app.sh '${{ matrix.arch }}'
       - uses: actions/upload-artifact@v7
         with:
           name: sofatv-macos-${{ matrix.arch }}
-          path: dist/SofaTV-*.zip
+          path: |
+            dist/SofaTV-*.zip
+            dist/SofaTV-*.dmg
           if-no-files-found: error
 
   release-artifacts:
@@ -68,13 +65,14 @@ jobs:
           bash scripts/generate-update-manifest.sh dist
           git archive --format=tar.gz --prefix="SofaTV-$version-source/" \
             -o "dist/SofaTV-$version-source.tar.gz" HEAD
-          (cd dist && sha256sum SofaTV-*.zip SofaTV-*-source.tar.gz update.json > SHA256SUMS)
+          (cd dist && sha256sum SofaTV-*.zip SofaTV-*.dmg SofaTV-*-source.tar.gz update.json > SHA256SUMS)
           jq . dist/update.json
       - uses: actions/upload-artifact@v7
         with:
           name: sofatv-release
           path: |
             dist/SofaTV-*.zip
+            dist/SofaTV-*.dmg
             dist/SofaTV-*-source.tar.gz
             dist/update.json
             dist/SHA256SUMS
@@ -99,6 +97,8 @@ jobs:
           version="$(jq -er '.version | select(test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))' dist/update.json)"
           test -f "dist/SofaTV-$version-arm64.zip"
           test -f "dist/SofaTV-$version-x86_64.zip"
+          test -f "dist/SofaTV-$version-arm64.dmg"
+          test -f "dist/SofaTV-$version-x86_64.dmg"
           test -f "dist/SofaTV-$version-source.tar.gz"
           (cd dist && sha256sum -c SHA256SUMS)
           echo "version=$version" >> "$GITHUB_OUTPUT"

@@ -78,14 +78,14 @@
 
 ## 下载与上手
 
-需要 **macOS 14 或更高版本**，支持 Apple Silicon 和 Intel Mac。前往 [最新版本](https://github.com/ztygalaxy/SofaTV/releases/latest)，下载对应的 ZIP 安装包。
+需要 **macOS 14 或更高版本**，支持 Apple Silicon 和 Intel Mac。前往 [最新版本](https://github.com/ztygalaxy/SofaTV/releases/latest)，下载对应的 DMG 或 ZIP 安装包。
 
 | 你的 Mac | 安装包 |
 | --- | --- |
-| Apple Silicon（M 系列芯片） | `SofaTV-<版本>-arm64.zip` |
-| Intel 处理器 | `SofaTV-<版本>-x86_64.zip` |
+| Apple Silicon（M 系列芯片） | `SofaTV-<版本>-arm64.dmg` / `.zip` |
+| Intel 处理器 | `SofaTV-<版本>-x86_64.dmg` / `.zip` |
 
-解压后，将 **沙发电视.app** 拖入“应用程序”并打开。
+打开 DMG，将 **沙发电视.app** 拖入旁边的“应用程序”文件夹。使用 ZIP 时，解压得到与压缩包同名的 `.app`，将它拖入“应用程序”并打开；应用内仍显示“沙发电视”。
 
 ### 第一次使用
 
@@ -186,7 +186,9 @@ TXT 使用“频道名,地址”，通过 `分组名,#genre#` 切换分组：
 <details>
 <summary>如何更新应用？</summary>
 
-选择“沙发电视 → 检查更新…”，发现新版本后打开发布页，下载对应芯片的安装包，退出应用并替换旧版本。
+应用启动后会在后台检查更新。满 10 秒时还没开始看电视，有新版本才弹出提示；已经开始播放则不打扰本次观看。也可以随时选择“沙发电视 → 检查更新…”。
+
+点击“下载并安装”会下载对应芯片的 ZIP 更新包，校验后替换应用并重新打开，保留频道与设置。也可以选择“稍后”或“跳过此版本”；跳过的版本仍可通过手动检查查看。
 
 历史版本和更新说明见 [Releases](https://github.com/ztygalaxy/SofaTV/releases)。
 
@@ -211,6 +213,12 @@ cd SofaTV
 ```
 
 产物位于 `dist/沙发电视.app`，包含原生播放所需的动态库、图标和资源。
+
+生成当前芯片对应的 ZIP 和 DMG：
+
+```sh
+./scripts/package-app.sh
+```
 
 运行核心检查：
 

@@ -33,8 +33,10 @@ struct UpdateInstallationTests {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("SofaTV.InstallTests.\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }
         let old = try fixture(in: root.appendingPathComponent("installed"), version: "0.0.3")
-        let new = try fixture(in: root.appendingPathComponent("new"), version: "0.0.4")
-        let archive = root.appendingPathComponent("update.zip")
+        let original = try fixture(in: root.appendingPathComponent("new"), version: "0.0.4")
+        let new = original.deletingLastPathComponent().appendingPathComponent("SofaTV-0.0.4-arm64.app")
+        try FileManager.default.moveItem(at: original, to: new)
+        let archive = root.appendingPathComponent("SofaTV-0.0.4-arm64.zip")
         try run("/usr/bin/ditto", ["-c", "-k", "--sequesterRsrc", "--keepParent", new.path, archive.path])
         let hash = SHA256.hash(data: try Data(contentsOf: archive)).map { String(format: "%02x", $0) }.joined()
         try UpdateInstallation.verifyChecksum(of: archive, expected: hash)
