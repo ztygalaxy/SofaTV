@@ -5,12 +5,15 @@ import FoundationXML
 
 /// An XMLTV snapshot that can be cached without keeping the XML parser alive.
 struct ProgramGuide: Codable, Sendable {
-    struct CurrentProgram: Equatable, Sendable {
+    struct CurrentProgram: Hashable, Identifiable, Sendable {
         let title: String
         let start: Date
         let end: Date
+        var id: Self { self }
 
-        func subtitle(timeZone: TimeZone = .current) -> String {
+        func contains(_ date: Date) -> Bool { start <= date && date < end }
+
+        func timeRange(timeZone: TimeZone = .current) -> String {
             var calendar = Calendar(identifier: .gregorian)
             calendar.timeZone = timeZone
             func clock(_ date: Date) -> String {
@@ -18,7 +21,21 @@ struct ProgramGuide: Codable, Sendable {
                 return String(format: "%02d:%02d", time.hour!, time.minute!)
             }
             let nextDay = calendar.isDate(start, inSameDayAs: end) ? "" : "次日"
-            return "\(clock(start))–\(nextDay)\(clock(end)) \(title)"
+            return "\(clock(start))–\(nextDay)\(clock(end))"
+        }
+        func subtitle(timeZone: TimeZone = .current) -> String { "\(timeRange(timeZone: timeZone)) \(title)" }
+    }
+
+    struct Schedule: Equatable, Sendable {
+        let programs: [CurrentProgram]
+
+        func programs(on day: Date, calendar: Calendar = .current) -> [CurrentProgram] {
+            guard let interval = calendar.dateInterval(of: .day, for: day) else { return [] }
+            return programs.filter { $0.start < interval.end && $0.end > interval.start }
+        }
+
+        static func scrollTarget(in programs: [CurrentProgram], at date: Date) -> CurrentProgram? {
+            programs.first { $0.contains(date) } ?? programs.first { $0.start > date } ?? programs.last
         }
     }
 
@@ -68,6 +85,32 @@ struct ProgramGuide: Codable, Sendable {
             if let current = fallback.currentProgram(channel: channel, at: date) { return current }
         }
         return nil
+    }
+
+    /// Use the same source priority and overlap rules for the full schedule and current title.
+    func schedule(channel: Channel) -> Schedule {
+        let boundaries = programBoundaries(channel: channel).sorted()
+        var programs: [CurrentProgram] = []
+        var previous: CurrentProgram?
+        for (start, end) in zip(boundaries, boundaries.dropFirst()) {
+            guard let program = currentProgram(channel: channel, at: start) else { previous = nil; continue }
+            if previous == program, let last = programs.last, last.end == start {
+                programs[programs.count - 1] = CurrentProgram(title: program.title, start: last.start, end: end)
+            } else {
+                programs.append(CurrentProgram(title: program.title, start: start, end: end))
+            }
+            previous = program
+        }
+        return Schedule(programs: programs)
+    }
+
+    private func programBoundaries(channel: Channel) -> Set<Date> {
+        var result = Set<Date>()
+        if let id = channelID(for: channel), let programs = programsByChannel[id] {
+            for program in programs { result.insert(program.start); result.insert(program.end) }
+        }
+        for fallback in fallbackGuides ?? [] { result.formUnion(fallback.programBoundaries(channel: channel)) }
+        return result
     }
 
     private func localProgram(channel: Channel, at date: Date) -> CurrentProgram? {

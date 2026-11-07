@@ -9,6 +9,7 @@ class VideoWindowHost: NSView, NSWindowDelegate {
     private(set) var presentation: VideoPresentation = .embedded
     private(set) var detachedWindow: VideoDetachedWindow?
     var onPresentationChange: ((VideoPresentation) -> Void)?
+    var onEscape: (() -> Bool)?
     private let activateApplication: () -> Void
     private let makeWindow: (NSRect, VideoPresentation) -> VideoDetachedWindow
     private var transitioning = false
@@ -50,7 +51,10 @@ class VideoWindowHost: NSView, NSWindowDelegate {
         let previous = detachedWindow
         let videoWindow = makeWindow(initial, target)
         videoWindow.delegate = self
-        videoWindow.onExit = { [weak self] in self?.restoreEmbedded() }
+        videoWindow.onExit = { [weak self] in
+            guard let self else { return }
+            if self.onEscape?() != true { self.restoreEmbedded() }
+        }
         detachedWindow = videoWindow
         content.removeFromSuperview()
         previous?.contentView = nil
@@ -152,6 +156,10 @@ class VideoDetachedWindow: NSPanel {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if event.keyCode == 53 { onExit?(); return true }
+        return super.performKeyEquivalent(with: event)
+    }
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 53 { onExit?() }
         else { super.keyDown(with: event) }

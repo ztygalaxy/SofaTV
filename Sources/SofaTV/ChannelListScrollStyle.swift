@@ -4,8 +4,8 @@ import SwiftUI
 
 /// Keep the channel list's scrollbar quiet without changing system preferences.
 struct ChannelListScrollStyle: NSViewRepresentable {
-    let groups: [ChannelListGroup]
-    let makeHeader: (String) -> AnyView
+    var groups: [ChannelListGroup] = []
+    var makeHeader: (String) -> AnyView = { _ in AnyView(EmptyView()) }
     var pinnedHeaderBackground: NSColor = .sofaBackground
     var clipsContentBehindHeader = false
 
@@ -87,8 +87,12 @@ struct ChannelListScrollStyle: NSViewRepresentable {
         }
         private func matches(_ scroll: NSScrollView) -> Bool {
             guard scroll.window === window else { return false }
-            let overlap = bounds.intersection(scroll.convert(scroll.bounds, to: self))
-            // Scope discovery to this List, excluding the video web view and other panes.
+            let frame = scroll.convert(scroll.bounds, to: self)
+            // An overlay also intersects the larger video scroll view beneath it.
+            // Match the pane's size as well as its position before applying the style.
+            guard abs(frame.width - bounds.width) <= max(2, bounds.width * 0.08),
+                  abs(frame.height - bounds.height) <= max(2, bounds.height * 0.08) else { return false }
+            let overlap = bounds.intersection(frame)
             return !overlap.isNull && overlap.width > bounds.width * 0.8 && overlap.height > bounds.height * 0.8
         }
         func detach() {

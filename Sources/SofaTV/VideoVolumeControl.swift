@@ -69,6 +69,8 @@ final class VideoVolumeControl: NSView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     override var intrinsicContentSize: NSSize { Layout.size }
+    static var buttonSide: CGFloat { Layout.speakerHitSide }
+    static var trailingButtonCenterInset: CGFloat { Layout.outerInset + Layout.speakerHitSide / 2 }
     override var acceptsFirstResponder: Bool { false }
     override var mouseDownCanMoveWindow: Bool { false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }

@@ -10,20 +10,22 @@ struct VideoStage: NSViewRepresentable {
     @ObservedObject var library: Library
     @ObservedObject var ui: UIState
     @ObservedObject var programGuide: ProgramGuideStore
+    let guidePreview: ProgramGuidePreview
     let sidebarCollapsed: Bool
     let onToggleSidebar: (Bool) -> Void
     func makeNSView(context: Context) -> Host {
         let host = Host(library: library)
         host.stage.configureSidebar(collapsed: sidebarCollapsed, toggle: onToggleSidebar)
-        host.stage.configureFullscreenChannelPicker(library: library, ui: ui, programGuide: programGuide)
+        host.stage.configureFullscreenChannelPicker(library: library, ui: ui, programGuide: programGuide, preview: guidePreview)
         return host
     }
     func updateNSView(_ host: Host, context: Context) {
         host.stage.configureSidebar(collapsed: sidebarCollapsed, toggle: onToggleSidebar)
-        host.stage.configureFullscreenChannelPicker(library: library, ui: ui, programGuide: programGuide)
+        host.stage.configureFullscreenChannelPicker(library: library, ui: ui, programGuide: programGuide, preview: guidePreview)
     }
     static func dismantleNSView(_ host: Host, coordinator: ()) {
         host.restoreEmbedded(animated: false, activateMain: false)
+        host.stage.clearGuidePreview()
         host.stage.observation = nil
     }
 
@@ -50,6 +52,7 @@ struct VideoStage: NSViewRepresentable {
             }
             stage.onToggleFullscreen = { [weak self] in self?.toggleFullscreen() }
             stage.onToggleMiniPlayer = { [weak self] in self?.toggleMini() }
+            onEscape = { [weak self] in self?.stage.dismissFullscreenBrowsers() ?? false }
             stage.pointer.onDoubleClick = { [weak self] in
                 guard let self else { return }
                 if self.presentation == .mini { self.restoreEmbedded() }
@@ -196,7 +199,14 @@ struct VideoStage: NSViewRepresentable {
         private var sidebarControlAvailable = false
         private var volumeControlAvailable = false
         private var fullscreenDrawerVisible = false
+        private var fullscreenBrowserSuppressed = false
+        private var fullscreenBrowsersClosing = false {
+            didSet { guidePreview?.acceptsHover = !fullscreenBrowsersClosing }
+        }
         private var fullscreenPickerConfigured = false
+        private weak var guidePreview: ProgramGuidePreview?
+        private var guideHost: ProgramGuideOverlayHost?
+        private var guideUpdates = Set<AnyCancellable>()
         private var trackingControls: Bool { trackingSidebarButton || trackingVolume || trackingMiniPlayerButton }
         var onToggleFullscreen: (() -> Void)?
         var onToggleMiniPlayer: (() -> Void)?
@@ -207,13 +217,17 @@ struct VideoStage: NSViewRepresentable {
                 layer?.masksToBounds = isMiniPlayer
                 configureMiniPlayerButton()
                 updateControlAvailability()
+                updateGuidePresentation()
             }
         }
         var isVideoFullscreen = false {
             didSet {
                 volumeControl.setFullscreen(isVideoFullscreen)
                 if !isVideoFullscreen { setFullscreenDrawerVisible(false, animated: false) }
+                fullscreenBrowserSuppressed = false
+                fullscreenBrowsersClosing = false
                 updateControlAvailability()
+                updateGuidePresentation()
             }
         }
         let cover = NSView()
@@ -319,11 +333,39 @@ struct VideoStage: NSViewRepresentable {
             sidebarCollapsed = collapsed; onToggleSidebar = toggle
             sidebarButton.setCollapsed(collapsed)
             updateControlAvailability()
+            updateGuidePresentation()
         }
-        func configureFullscreenChannelPicker(library: Library, ui: UIState, programGuide: ProgramGuideStore) {
+        func configureFullscreenChannelPicker(library: Library, ui: UIState, programGuide: ProgramGuideStore, preview: ProgramGuidePreview) {
+            guideHost?.playingChannel = library.selected?.identity
             guard !fullscreenPickerConfigured else { return }
             fullscreenPickerConfigured = true
-            fullscreenDrawer.setContent(AnyView(FullscreenChannelPicker(library: library, ui: ui, programGuide: programGuide)))
+            guidePreview = preview
+            fullscreenDrawer.setContent(AnyView(FullscreenChannelPicker(library: library, ui: ui, programGuide: programGuide, guidePreview: preview)))
+            let guide = ProgramGuideOverlayHost(preview: preview, store: programGuide, presentation: .fullscreen,
+                                                playingChannel: library.selected?.identity)
+            guideHost = guide
+            addSubview(guide, positioned: .above, relativeTo: fullscreenDrawer)
+            preview.$channel.receive(on: DispatchQueue.main).sink { [weak self] _ in
+                self?.updateGuideInteraction()
+            }.store(in: &guideUpdates)
+            preview.$panelHovered.receive(on: DispatchQueue.main).sink { [weak self] inside in
+                guard let self, self.isVideoFullscreen else { return }
+                if inside { self.fullscreenDrawerHideTimer?.invalidate(); self.fullscreenDrawerHideTimer = nil }
+                else if !self.fullscreenBrowserContainsCurrentPointer() { self.scheduleFullscreenDrawerHide() }
+            }.store(in: &guideUpdates)
+            updateGuidePresentation()
+        }
+        func clearGuidePreview() {
+            guidePreview?.setPresentation(.embedded)
+            guidePreview?.dismiss()
+        }
+        private func updateGuidePresentation() {
+            guidePreview?.setPresentation(isMiniPlayer ? nil : isVideoFullscreen ? .fullscreen : sidebarCollapsed ? nil : .embedded)
+            updateGuideInteraction()
+        }
+        private func updateGuideInteraction() {
+            guideHost?.isHidden = !isVideoFullscreen
+            guideHost?.isInteractive = isVideoFullscreen && guidePreview?.channel != nil
         }
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
@@ -363,22 +405,53 @@ struct VideoStage: NSViewRepresentable {
             }
         }
         private func updateFullscreenDrawer(for event: NSEvent) {
-            guard isVideoFullscreen else { return }
+            guard isVideoFullscreen, !fullscreenBrowsersClosing else { return }
             let location = convert(event.locationInWindow, from: nil)
-            if location.x <= bounds.width / 3 { setFullscreenDrawerVisible(true) }
+            if fullscreenBrowserSuppressed {
+                if !fullscreenBrowserContains(location) { fullscreenBrowserSuppressed = false }
+                return
+            }
+            if fullscreenBrowserContains(location) { setFullscreenDrawerVisible(true) }
             else { scheduleFullscreenDrawerHide() }
         }
         private func fullscreenDrawerDidExit(for event: NSEvent) {
-            guard isVideoFullscreen else { return }
-            let location = convert(event.locationInWindow, from: nil)
-            if location.x <= bounds.width / 3 { setFullscreenDrawerVisible(true) }
-            else { scheduleFullscreenDrawerHide() }
+            updateFullscreenDrawer(for: event)
+        }
+        private func fullscreenBrowserContains(_ point: NSPoint) -> Bool {
+            bounds.contains(point) && (point.x <= bounds.width / 3 ||
+                (guideHost?.isInteractive == true && guideHost?.frame.contains(point) == true))
+        }
+        private func fullscreenBrowserContainsCurrentPointer() -> Bool {
+            guard let window else { return false }
+            return fullscreenBrowserContains(convert(window.mouseLocationOutsideOfEventStream, from: nil))
+        }
+        func dismissFullscreenBrowsers() -> Bool {
+            guard isVideoFullscreen else { return false }
+            if fullscreenBrowsersClosing { return true }
+            guard fullscreenDrawerVisible || guidePreview?.channel != nil else { return false }
+            // Keep a stationary pointer from immediately reopening the dismissed sidebar.
+            fullscreenBrowserSuppressed = true
+            fullscreenBrowsersClosing = true
+            fullscreenDrawerHideTimer?.invalidate(); fullscreenDrawerHideTimer = nil
+            if guidePreview?.channel != nil {
+                guidePreview?.dismiss { [weak self] in
+                    guard let self, self.isVideoFullscreen else { return }
+                    self.setFullscreenDrawerVisible(false)
+                }
+            } else {
+                setFullscreenDrawerVisible(false)
+            }
+            return true
         }
         private func setFullscreenDrawerVisible(_ visible: Bool, animated: Bool = true) {
             fullscreenDrawerHideTimer?.invalidate(); fullscreenDrawerHideTimer = nil
             guard isVideoFullscreen || !visible else { return }
-            guard fullscreenDrawerVisible != visible || (!visible && !fullscreenDrawer.isHidden) else { return }
+            guard fullscreenDrawerVisible != visible || (!visible && !fullscreenDrawer.isHidden) else {
+                if !visible { fullscreenBrowsersClosing = false }
+                return
+            }
             fullscreenDrawerVisible = visible
+            if !visible, isVideoFullscreen { guidePreview?.dismiss() }
             let target = fullscreenDrawerFrame(visible: visible)
             if visible { fullscreenDrawer.isHidden = false }
             let duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion || !animated ? 0 : 0.24
@@ -390,11 +463,12 @@ struct VideoStage: NSViewRepresentable {
                 Task { @MainActor [weak self] in
                     guard let self, !self.fullscreenDrawerVisible else { return }
                     self.fullscreenDrawer.isHidden = true
+                    self.fullscreenBrowsersClosing = false
                 }
             }
         }
         private func scheduleFullscreenDrawerHide() {
-            guard fullscreenDrawerVisible else { return }
+            guard fullscreenDrawerVisible, !fullscreenBrowsersClosing, guidePreview?.panelHovered != true else { return }
             fullscreenDrawerHideTimer?.invalidate()
             let timer = Timer(timeInterval: 0.45, target: self, selector: #selector(hideFullscreenDrawer), userInfo: nil, repeats: false)
             RunLoop.main.add(timer, forMode: .common)
@@ -472,6 +546,7 @@ struct VideoStage: NSViewRepresentable {
             pointer.lastSidebarToggleTime = ProcessInfo.processInfo.systemUptime
             sidebarCollapsed.toggle()
             sidebarButton.setCollapsed(sidebarCollapsed)
+            updateGuidePresentation()
             onToggleSidebar?(sidebarCollapsed)
             showOverlayControls()
         }
@@ -510,12 +585,17 @@ struct VideoStage: NSViewRepresentable {
             if playerView.frame != bounds { playerView.frame = bounds }
             cover.frame = bounds; pointer.frame = bounds
             layoutFullscreenDrawer()
-            let fadeHeight = max(56, bounds.height * 0.1)
+            let guideX = fullscreenDrawerFrame(visible: true).maxX
+            guideHost?.frame = NSRect(x: guideX, y: 0, width: min(340, max(0, bounds.width - guideX)), height: bounds.height)
+            let controlInset: CGFloat = 16
+            let cornerCenterInset = controlInset + VideoVolumeControl.trailingButtonCenterInset
+            let buttonSide = VideoVolumeControl.buttonSide
+            let fadeHeight = max(cornerCenterInset * 2, bounds.height * 0.1)
             volumeBackdrop.frame = NSRect(x: bounds.minX, y: bounds.minY, width: bounds.width, height: fadeHeight)
             topBackdrop.frame = NSRect(x: bounds.minX, y: bounds.maxY - fadeHeight, width: bounds.width, height: fadeHeight)
-            miniPlayerButton.frame = NSRect(x: max(8, bounds.maxX - 60), y: bounds.maxY - fadeHeight / 2 - 16, width: 32, height: 32)
+            miniPlayerButton.frame = NSRect(x: bounds.maxX - cornerCenterInset - buttonSide / 2, y: bounds.maxY - cornerCenterInset - buttonSide / 2, width: buttonSide, height: buttonSide)
             let volumeSize = volumeControl.intrinsicContentSize
-            volumeControl.frame = NSRect(x: max(8, bounds.maxX - volumeSize.width - 16), y: max(0, (fadeHeight - volumeSize.height) / 2), width: min(volumeSize.width, max(0, bounds.width - 16)), height: volumeSize.height)
+            volumeControl.frame = NSRect(x: max(8, bounds.maxX - volumeSize.width - controlInset), y: bounds.minY + cornerCenterInset - volumeSize.height / 2, width: min(volumeSize.width, max(0, bounds.width - controlInset)), height: volumeSize.height)
             sidebarButton.frame = NSRect(x: 0, y: bounds.midY - 28, width: 28, height: 56)
             if pointerInVideo && !containsCurrentPointer() {
                 pointerInVideo = false
@@ -533,6 +613,7 @@ private struct FullscreenChannelPicker: View {
     @ObservedObject var library: Library
     @ObservedObject var ui: UIState
     @ObservedObject var programGuide: ProgramGuideStore
+    let guidePreview: ProgramGuidePreview
     private let contentScale: CGFloat = 1.3
 
     private struct Section: Identifiable {
@@ -616,14 +697,18 @@ private struct FullscreenChannelPicker: View {
                                 contentScale: contentScale
                             )
                             .equatable()
+                            .onHover { guidePreview.hover(channel, in: .fullscreen, inside: $0) }
+                            .onDisappear { guidePreview.hover(channel, in: .fullscreen, inside: false) }
                             .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-                            .listRowBackground(Color.primary.opacity(library.selected?.id == channel.id ? 0.09 : 0))
+                            .listRowBackground(ChannelRowHighlight(preview: guidePreview, channel: channel.identity,
+                                                                  presentation: .fullscreen, selected: library.selected?.id == channel.id))
                             .listRowSeparator(.hidden)
                         }
                     }
                 }
             }
             .listStyle(.plain)
+            .contentMargins(.horizontal, 0, for: .scrollContent)
             .scrollContentBackground(.hidden)
             .background(Color.clear)
             .background {

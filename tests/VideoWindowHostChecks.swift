@@ -18,7 +18,7 @@ import AVKit
 }
 
 @main struct VideoWindowHostChecks {
-    @MainActor static func main() {
+    @MainActor static func main() async throws {
         _ = NSApplication.shared
         let main = EmbeddedWindow(contentRect: NSRect(x: 40, y: 40, width: 900, height: 560), styleMask: [.titled], backing: .buffered, defer: false)
         main.isReleasedWhenClosed = false
@@ -102,12 +102,32 @@ import AVKit
         precondition(host.presentation == .embedded && content.superview === host)
         checkPlaybackIdentity()
 
+        host.toggleFullscreen(animated: false)
+        var browsersOpen = true
+        host.onEscape = {
+            if browsersOpen { browsersOpen = false; return true }
+            return false
+        }
+        let fullscreen = host.detachedWindow!
+        let escape = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: fullscreen.windowNumber, context: nil, characters: "\u{1b}", charactersIgnoringModifiers: "\u{1b}", isARepeat: false, keyCode: 53)!
+        precondition(fullscreen.performKeyEquivalent(with: escape))
+        precondition(!browsersOpen && host.presentation == .fullscreen, "Escape must close browsers before leaving full screen")
+        checkPlaybackIdentity()
+        precondition(fullscreen.performKeyEquivalent(with: escape))
+        for _ in 0..<100 {
+            if host.presentation == .embedded { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        precondition(host.presentation == .embedded, "Escape with no browsers must restore the main window")
+        host.onEscape = nil
+        checkPlaybackIdentity()
+
         for screen in [NSRect(x: 0, y: 30, width: 1440, height: 850), NSRect(x: -1920, y: -200, width: 1920, height: 1080)] {
             let frame = VideoDetachedWindow.miniFrame(in: screen)
             precondition(screen.contains(frame) && frame.width == 400 && frame.height == 225)
         }
         precondition(modes.contains(.mini) && modes.contains(.fullscreen) && modes.last == .embedded)
         withExtendedLifetime((main, created)) {}
-        print("Video windows passed: pinned/resizable panel, main/fullscreen/mini round trips, playback identity, close/disposal, and display bounds")
+        print("Video windows passed: pinned panel, window round trips, playback identity, browser-first Escape, close/disposal, and display bounds")
     }
 }

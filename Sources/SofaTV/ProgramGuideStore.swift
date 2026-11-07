@@ -4,6 +4,8 @@ import Combine
 /// Publishes changed current programmes independently of playback and channel loading.
 @MainActor final class ProgramGuideStore: NSObject, ObservableObject {
     @Published private(set) var titles: [String: String] = [:]
+    @Published private(set) var scheduleRevision = 0
+    var currentDate: Date { now() }
     private(set) var nextRefreshAt: Date?
     private var channels: [Channel] = []
     private var guide: ProgramGuide?
@@ -57,6 +59,9 @@ import Combine
         guard running else { return }
         updateTitles(); refreshIfNeeded(); scheduleTick()
     }
+    func schedule(for channel: Channel) -> ProgramGuide.Schedule {
+        guide?.schedule(channel: channel) ?? ProgramGuide.Schedule(programs: [])
+    }
     private func updateTitles() {
         let at = now()
         var current: [String: String] = [:]
@@ -97,13 +102,13 @@ import Combine
     }
     private func restore(_ entry: ProgramGuideCacheEntry?, for token: UUID) -> Bool {
         guard loadID == token else { return false }
-        if let entry { guide = entry.guide }
+        if let entry { guide = entry.guide; scheduleRevision += 1 }
         if running { updateTitles(); scheduleTick() }
         return true
     }
     private func finish(_ entry: ProgramGuideCacheEntry?, for token: UUID) {
         guard loadID == token else { return }
-        if let entry { guide = entry.guide }
+        if let entry { guide = entry.guide; scheduleRevision += 1 }
         // Successful snapshots refresh every four hours; network failures keep a short retry cooldown.
         let interval = entry == nil ? 10 * 60 : ProgramGuideRepository.refreshInterval
         nextRefreshAt = now().addingTimeInterval(interval)

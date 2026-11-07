@@ -502,6 +502,7 @@ struct ContentView: View {
     @StateObject private var library = Library()
     @StateObject private var ui = UIState()
     @StateObject private var programGuide = ProgramGuideStore()
+    @ViewState private var guidePreview = ProgramGuidePreview()
     @ViewState private var sidebarWidth: CGFloat
     private let minimumSidebarWidth: CGFloat = 294
     private let minimumVideoWidth: CGFloat = 460
@@ -611,15 +612,18 @@ struct ContentView: View {
                                     onDelete: { library.confirmDeletion(.channel(channel)) }
                                 )
                                 .equatable()
+                                .onHover { guidePreview.hover(channel, in: .embedded, inside: $0) }
+                                .onDisappear { guidePreview.hover(channel, in: .embedded, inside: false) }
                                 .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-                                .listRowBackground(Color.primary.opacity(library.selected?.id == channel.id ? 0.065 : 0))
+                                .listRowBackground(ChannelRowHighlight(preview: guidePreview, channel: channel.identity,
+                                                                      selected: library.selected?.id == channel.id))
                                 .listRowSeparator(.hidden)
                             }
                         }
                     }
                     }
                     .listStyle(.plain)
-                    .contentMargins(.trailing, 0, for: .scrollContent)
+                    .contentMargins(.horizontal, 0, for: .scrollContent)
                     .scrollContentBackground(.hidden)
                     .background(Color.sofaBackground)
                     .background {
@@ -675,7 +679,7 @@ struct ContentView: View {
                 .accessibilityHidden(sidebarHidden)
                 Group {
                     if library.selected != nil {
-                        VideoStage(library: library, ui: ui, programGuide: programGuide, sidebarCollapsed: sidebarHidden) { collapsed in
+                        VideoStage(library: library, ui: ui, programGuide: programGuide, guidePreview: guidePreview, sidebarCollapsed: sidebarHidden) { collapsed in
                             let duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.22
                             withAnimation(.easeInOut(duration: duration)) { ui.sidebarCollapsed = collapsed }
                         }
@@ -684,6 +688,11 @@ struct ContentView: View {
                 }
                 .frame(minWidth: minimumVideoWidth, maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.sofaBackground)
+                .overlay(alignment: .leading) {
+                    ProgramGuideOverlay(preview: guidePreview, store: programGuide, presentation: .embedded,
+                                        playingChannel: library.selected?.identity)
+                        .frame(width: 260)
+                }
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
         }

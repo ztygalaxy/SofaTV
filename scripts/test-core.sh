@@ -15,6 +15,10 @@ swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/Sof
 python3 tests/check-playlist.py
 swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/SofaTV/SofaTheme.swift Sources/SofaTV/ChannelListPinnedHeader.swift tests/ChannelListPinnedHeaderChecks.swift -o /private/tmp/sofatv-pinned-header-check
 /private/tmp/sofatv-pinned-header-check
+swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/SofaTV/SofaTheme.swift Sources/SofaTV/ChannelListPinnedHeader.swift Sources/SofaTV/ChannelListScrollStyle.swift tests/ChannelListScrollStyleChecks.swift -o /private/tmp/sofatv-scroll-style-check
+/private/tmp/sofatv-scroll-style-check
+swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/SofaTV/ChannelCatalog.swift Sources/SofaTV/ProgramGuidePreview.swift Sources/SofaTV/ChannelRow.swift Sources/SofaTV/FavoriteStar.swift Sources/SofaTV/ChannelLogoResolver.swift Sources/SofaTV/ChannelLogoView.swift Sources/SofaTV/ChannelListPinnedHeader.swift Sources/SofaTV/ChannelListScrollStyle.swift Sources/SofaTV/SofaTheme.swift Sources/SofaTV/ViewState.swift tests/ChannelRowChecks.swift -o /private/tmp/sofatv-channel-row-check
+/private/tmp/sofatv-channel-row-check
 swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/SofaTV/ChannelLogoResolver.swift tests/ChannelLogoResolverChecks.swift -o /private/tmp/sofatv-logo-check
 /private/tmp/sofatv-logo-check
 clang -O2 -I scripts tests/H5ePesChecks.c -o /private/tmp/sofatv-h5e-pes-check
@@ -27,11 +31,17 @@ swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang -framework 
 /private/tmp/sofatv-dock-icon-check
 swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/SofaTV/ChannelCatalog.swift Sources/SofaTV/ProgramGuide.swift tests/ProgramGuideChecks.swift -o /private/tmp/sofatv-program-guide-check
 /private/tmp/sofatv-program-guide-check
+swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/SofaTV/ChannelCatalog.swift Sources/SofaTV/ProgramGuide.swift tests/ProgramGuideScheduleChecks.swift -o /private/tmp/sofatv-guide-schedule-check
+/private/tmp/sofatv-guide-schedule-check
+swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/SofaTV/ChannelCatalog.swift Sources/SofaTV/ProgramGuidePreview.swift tests/ProgramGuidePreviewChecks.swift -o /private/tmp/sofatv-guide-preview-check
+/private/tmp/sofatv-guide-preview-check
 swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/SofaTV/ProgramGuidePayload.swift tests/ProgramGuidePayloadChecks.swift -o /private/tmp/sofatv-program-guide-payload-check
 /private/tmp/sofatv-program-guide-payload-check
 swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/SofaTV/ChannelCatalog.swift Sources/SofaTV/ProgramGuide.swift Sources/SofaTV/ProgramGuidePayload.swift Sources/SofaTV/ProgramGuideRepository.swift tests/ProgramGuideRepositoryChecks.swift -o /private/tmp/sofatv-program-guide-repository-check
 swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang -framework AppKit Sources/SofaTV/ChannelCatalog.swift Sources/SofaTV/ProgramGuide.swift Sources/SofaTV/ProgramGuidePayload.swift Sources/SofaTV/ProgramGuideRepository.swift Sources/SofaTV/ProgramGuideStore.swift tests/ProgramGuideStoreChecks.swift -o /private/tmp/sofatv-program-guide-store-check
 /private/tmp/sofatv-program-guide-store-check
+swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/SofaTV/ChannelCatalog.swift Sources/SofaTV/ProgramGuide.swift Sources/SofaTV/ProgramGuidePayload.swift Sources/SofaTV/ProgramGuideRepository.swift Sources/SofaTV/ProgramGuideStore.swift Sources/SofaTV/ProgramGuidePreview.swift Sources/SofaTV/ProgramGuideDrawer.swift Sources/SofaTV/ChannelLogoResolver.swift Sources/SofaTV/ChannelLogoView.swift Sources/SofaTV/ChannelListPinnedHeader.swift Sources/SofaTV/ChannelListScrollStyle.swift Sources/SofaTV/SofaTheme.swift Sources/SofaTV/ViewState.swift tests/ProgramGuideDrawerChecks.swift -o /private/tmp/sofatv-guide-drawer-check
+/private/tmp/sofatv-guide-drawer-check
 /private/tmp/sofatv-program-guide-repository-check
 swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/SofaTV/VideoVolumeScroll.swift tests/VideoVolumeScrollChecks.swift -o /private/tmp/sofatv-video-volume-check
 /private/tmp/sofatv-video-volume-check

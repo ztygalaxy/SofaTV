@@ -66,6 +66,23 @@ struct ChannelRow: View, Equatable {
     }
 }
 
+/// Only the row's fill observes guide hover changes; its text and layout stay untouched.
+struct ChannelRowHighlight: View {
+    @ObservedObject var preview: ProgramGuidePreview
+    let channel: Channel.Identity
+    var presentation: ProgramGuidePreview.Presentation = .embedded
+    let selected: Bool
+
+    var body: some View {
+        let hovered = preview.presentation == presentation && preview.hoveredRow == channel
+        return Color.primary.opacity(selected || hovered ? 0.07 : 0)
+            .overlay(alignment: .leading) {
+                if selected { Color.sofaAccent.frame(width: 3) }
+            }
+            .allowsHitTesting(false)
+    }
+}
+
 /// Preserve the label's exact geometry while the mouse is pressed.
 private struct FavoriteButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View { configuration.label }

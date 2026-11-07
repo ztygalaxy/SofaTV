@@ -2,6 +2,9 @@ import AppKit
 import SwiftUI
 
 extension NSColor {
+    // Main body colour of the television in AppIcon.svg (#3DB7AB).
+    static let sofaAccent = NSColor(srgbRed: 61.0 / 255, green: 183.0 / 255, blue: 171.0 / 255, alpha: 1)
+
     static func sofaBackground(for appearance: NSAppearance) -> NSColor {
         let mode = appearance.bestMatch(from: [.darkAqua, .aqua])
         return mode == .darkAqua
@@ -12,5 +15,6 @@ extension NSColor {
 }
 
 extension Color {
+    static let sofaAccent = Color(nsColor: .sofaAccent)
     static let sofaBackground = Color(nsColor: .sofaBackground)
 }
