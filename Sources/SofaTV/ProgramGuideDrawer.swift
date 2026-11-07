@@ -6,7 +6,7 @@ struct ProgramGuideOverlay: NSViewRepresentable {
     let preview: ProgramGuidePreview
     let store: ProgramGuideStore
     let presentation: ProgramGuidePreview.Presentation
-    let playingChannel: Channel.Identity?
+    let playingChannel: Channel?
 
     func makeNSView(context: Context) -> ProgramGuideOverlayHost {
         ProgramGuideOverlayHost(preview: preview, store: store, presentation: presentation, playingChannel: playingChannel)
@@ -19,7 +19,8 @@ private struct ProgramGuideDrawer: View {
     @ObservedObject var store: ProgramGuideStore
     let fullscreen: Bool
     let isPlayingChannel: Bool
-    @ViewState private var scrollRequest = 0
+    let canReturnToCurrent: Bool
+    let returnToCurrent: () -> Void
     private var scale: CGFloat { fullscreen ? 1.3 : 1 }
 
     var body: some View {
@@ -45,13 +46,14 @@ private struct ProgramGuideDrawer: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ProgramGuideScrollView(programs: programs, now: now, fullscreen: fullscreen,
-                                       isPlayingChannel: isPlayingChannel, revision: store.scheduleRevision, scrollRequest: scrollRequest)
+                                       isPlayingChannel: isPlayingChannel, revision: store.scheduleRevision)
             }
             HStack {
                 Spacer()
-                Button("回到当前") {
-                    scrollRequest += 1
-                }.buttonStyle(.plain)
+                Button("回到当前", action: returnToCurrent)
+                    .buttonStyle(.plain)
+                    .disabled(!canReturnToCurrent)
+                    .help("定位正在播放的频道及当前节目")
             }
             .font(.system(size: 11 * scale))
             .padding(.horizontal, 14 * scale)
@@ -103,7 +105,6 @@ private struct ProgramGuideScrollView: NSViewRepresentable {
     let fullscreen: Bool
     let isPlayingChannel: Bool
     let revision: Int
-    let scrollRequest: Int
 
     func makeNSView(context: Context) -> ScheduleScrollView { ScheduleScrollView() }
     func updateNSView(_ scroll: ScheduleScrollView, context: Context) { scroll.update(self) }
@@ -137,7 +138,7 @@ private struct ProgramGuideScrollView: NSViewRepresentable {
 
         func update(_ value: ProgramGuideScrollView) {
             if let previous = configuration {
-                centreRequested = centreRequested || previous.programs != value.programs || previous.revision != value.revision || previous.scrollRequest != value.scrollRequest
+                centreRequested = centreRequested || previous.programs != value.programs || previous.revision != value.revision
             }
             configuration = value
             while hosts.count > value.programs.count { hosts.removeLast().removeFromSuperview() }
@@ -205,9 +206,9 @@ private struct ProgramGuideGlass: NSViewRepresentable {
 /// Move a fixed-size pane as a unit, using the same native animation as the channel sidebar.
 final class ProgramGuideOverlayHost: NSView {
     var isInteractive = true
-    var playingChannel: Channel.Identity? {
+    var playingChannel: Channel? {
         didSet {
-            guard playingChannel != oldValue, visible, let channel = preview.channel else { return }
+            guard playingChannel?.identity != oldValue?.identity, visible, let channel = preview.channel else { return }
             setContent(for: channel)
         }
     }
@@ -220,7 +221,7 @@ final class ProgramGuideOverlayHost: NSView {
     private var animationID = 0
 
     init(preview: ProgramGuidePreview, store: ProgramGuideStore, presentation: ProgramGuidePreview.Presentation,
-         playingChannel: Channel.Identity? = nil) {
+         playingChannel: Channel? = nil) {
         self.preview = preview; self.store = store; self.presentation = presentation
         self.playingChannel = playingChannel
         super.init(frame: .zero)
@@ -245,10 +246,16 @@ final class ProgramGuideOverlayHost: NSView {
     private func paneFrame(visible: Bool) -> NSRect {
         NSRect(x: visible ? 0 : -bounds.width, y: 0, width: bounds.width, height: bounds.height)
     }
+    func returnToCurrent() {
+        guard visible, let playingChannel else { return }
+        preview.showPlayingChannel(playingChannel, in: presentation)
+    }
     private func setContent(for channel: Channel) {
         pane.rootView = AnyView(
             ProgramGuideDrawer(channel: channel, store: store, fullscreen: presentation == .fullscreen,
-                               isPlayingChannel: playingChannel == channel.identity)
+                               isPlayingChannel: playingChannel?.identity == channel.identity,
+                               canReturnToCurrent: playingChannel != nil,
+                               returnToCurrent: { [weak self] in self?.returnToCurrent() })
                 .id(preview.revealID)
                 .onHover { [weak preview, presentation] in preview?.hoverPanel($0, in: presentation) }
                 .preferredColorScheme(.dark)

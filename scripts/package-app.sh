@@ -2,11 +2,11 @@
 set -eu
 cd "${0:A:h:h}"
 
-version="$(tr -d '[:space:]' < VERSION)"
+application="dist/沙发电视.app"
+version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$application/Contents/Info.plist")"
 arch="${1:-$(uname -m)}"
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { print -u2 "Invalid VERSION: $version"; exit 1; }
 [[ "$arch" == arm64 || "$arch" == x86_64 ]] || { print -u2 "Unsupported architecture: $arch"; exit 1; }
-application="dist/沙发电视.app"
 [[ "$(lipo -archs "$application/Contents/MacOS/SofaTV")" == "$arch" ]] || { print -u2 "Application architecture does not match $arch"; exit 1; }
 codesign --verify --deep --strict "$application"
 

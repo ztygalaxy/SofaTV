@@ -85,6 +85,18 @@ final class AboutWindowController: NSWindowController {
         links.addArrangedSubview(linkButton("开源许可", identifier: "About.licenses", action: #selector(showLicenses)))
         stack.addArrangedSubview(links)
 
+        let attribution = label("By ztygalaxy with love.", identifier: "About.attribution", size: 11)
+        attribution.textColor = .secondaryLabelColor
+        attribution.allowsEditingTextAttributes = true
+        let credit = NSMutableAttributedString(string: attribution.stringValue, attributes: [
+            .font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor
+        ])
+        credit.addAttributes([.link: URL(string: "https://github.com/ztygalaxy")!, .underlineStyle: 0],
+                             range: (credit.string as NSString).range(of: "ztygalaxy"))
+        attribution.attributedStringValue = credit
+        stack.addArrangedSubview(attribution)
+        stack.setCustomSpacing(18, after: links)
+
         contentView.layoutSubtreeIfNeeded()
         window.setContentSize(NSSize(width: 520, height: max(300, ceil(stack.fittingSize.height) + 56)))
         window.center()

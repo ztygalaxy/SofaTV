@@ -6,6 +6,8 @@ swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/Sof
 /private/tmp/sofatv-cmg-check
 swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/SofaTV/PlaybackRace.swift tests/PlaybackRaceChecks.swift -o /private/tmp/sofatv-race-check
 /private/tmp/sofatv-race-check
+swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/SofaTV/PlaybackSleepPrevention.swift tests/PlaybackSleepChecks.swift -o /private/tmp/sofatv-sleep-check
+/private/tmp/sofatv-sleep-check
 swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/SofaTV/AppWindows.swift tests/AppWindowsChecks.swift -o /private/tmp/sofatv-app-windows-check
 /private/tmp/sofatv-app-windows-check
 swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/SofaTV/VideoWindowHost.swift tests/VideoWindowHostChecks.swift -o /private/tmp/sofatv-video-windows-check
@@ -35,6 +37,8 @@ swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/Sof
 /private/tmp/sofatv-guide-schedule-check
 swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/SofaTV/ChannelCatalog.swift Sources/SofaTV/ProgramGuidePreview.swift tests/ProgramGuidePreviewChecks.swift -o /private/tmp/sofatv-guide-preview-check
 /private/tmp/sofatv-guide-preview-check
+swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/SofaTV/ChannelCatalog.swift Sources/SofaTV/ProgramGuidePreview.swift Sources/SofaTV/ChannelListFocus.swift Sources/SofaTV/ViewState.swift tests/ChannelListFocusChecks.swift -o /private/tmp/sofatv-channel-focus-check
+/private/tmp/sofatv-channel-focus-check
 swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/SofaTV/ProgramGuidePayload.swift tests/ProgramGuidePayloadChecks.swift -o /private/tmp/sofatv-program-guide-payload-check
 /private/tmp/sofatv-program-guide-payload-check
 swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/SofaTV/ChannelCatalog.swift Sources/SofaTV/ProgramGuide.swift Sources/SofaTV/ProgramGuidePayload.swift Sources/SofaTV/ProgramGuideRepository.swift tests/ProgramGuideRepositoryChecks.swift -o /private/tmp/sofatv-program-guide-repository-check

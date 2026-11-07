@@ -49,6 +49,7 @@ import WebKit
     private var allowReducedH5e = false
     private var cmgLoader: CmgAssetLoader?
     let player = AVPlayer()
+    private let sleepPrevention = PlaybackSleepPrevention()
     var importPanel: NSOpenPanel?
     private var observation: NSKeyValueObservation?
     private var playbackObservers: [NSObjectProtocol] = []
@@ -120,6 +121,7 @@ import WebKit
         }
         if let next = channel.sources.indices.first(where: { !attempted.contains($0) }) { start(channel, index: next) }
         else {
+            sleepPrevention.setPlaying(false)
             videoVisible = false; webVideo = false
             DockIconController.shared.reset()
             playbackStatus = "播放失败"; showError(message)
@@ -277,6 +279,7 @@ import WebKit
                 Task { @MainActor [weak self] in
                     guard let self, self.session == token, self.player.currentItem === item else { return }
                     if eventName == .AVPlayerItemDidPlayToEndTime {
+                        self.sleepPrevention.setPlaying(false)
                         self.videoVisible = false; self.webVideo = false
                         DockIconController.shared.reset()
                         self.playbackStatus = "播放已结束"
@@ -323,6 +326,7 @@ import WebKit
         resolver.showVideoOnly { [weak self] ready in
             guard let self, self.session == token else { return }
             if ready, self.race.webReady(raceToken) {
+                self.sleepPrevention.setPlaying(true)
                 self.webVideo = true; self.videoVisible = true
                 if let selected = self.selected { DockIconController.shared.show(channelName: selected.name) }
                 self.player.isMuted = true
@@ -336,6 +340,7 @@ import WebKit
     }
     func videoAppeared(_ item: AVPlayerItem?) {
         guard let item, player.currentItem === item, race.nativeReady(race.token) else { return }
+        sleepPrevention.setPlaying(true)
         let token = session
         let size = item.presentationSize
         recordNative(size.width > 0 && size.height > 0 ? "原生首帧已显示 · \(Int(size.width))×\(Int(size.height))" : "原生首帧已显示")
@@ -364,6 +369,7 @@ import WebKit
         timeout?.cancel(); observation = nil; resolver.cancel(); session = UUID(); webChannel = nil
         selected = channel; restoreVolume(for: channel); attempted = []; allowReducedH5e = false; deferredH5eIndex = nil
         guard !channel.sources.isEmpty else {
+            sleepPrevention.setPlaying(false)
             DockIconController.shared.reset()
             player.pause(); player.replaceCurrentItem(with: nil)
             playbackStatus = "暂无视频直链"
@@ -393,6 +399,7 @@ import WebKit
         UserDefaults.standard.removeObject(forKey: "line-" + oldID)
     }
     func stopPlayback() {
+        sleepPrevention.setPlaying(false)
         timeout?.cancel(); observation = nil; resolver.cancel(); cmgLoader?.cancel(); cmgLoader = nil
         for observer in playbackObservers { NotificationCenter.default.removeObserver(observer) }
         playbackObservers = []
@@ -648,6 +655,9 @@ struct ContentView: View {
                         }
                     }
                     }
+                    .modifier(ChannelListFocus(preview: guidePreview, presentation: .embedded,
+                                               favorites: library.favorites, search: $ui.search,
+                                               favoritesOnly: $ui.favoritesOnly, collapsedGroups: $ui.collapsedGroups))
                     HStack {
                     AppLogoView()
                     Spacer(minLength: 6)
@@ -690,7 +700,7 @@ struct ContentView: View {
                 .background(Color.sofaBackground)
                 .overlay(alignment: .leading) {
                     ProgramGuideOverlay(preview: guidePreview, store: programGuide, presentation: .embedded,
-                                        playingChannel: library.selected?.identity)
+                                        playingChannel: library.selected)
                         .frame(width: 260)
                 }
             }

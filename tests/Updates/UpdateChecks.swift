@@ -27,6 +27,7 @@ func unwrap<T>(_ value: T?) throws -> T {
         try await automatic.testEmptyAndFailedChecksAreSilent()
         print("Automatic update checks passed: deadline, watching suppression, cancellation, skipped versions and silent errors")
         let window = UpdateWindowTests()
+        try UpdateMarkdownTests().run()
         await window.testReleaseNotesAdaptToWrappedLinesAndCapAtFifteen()
         try await window.testButtonsAlignAndSkipPersistsWithoutModalSession()
         print("Update window checks passed: adaptive notes, 15-line limit, button alignment and persistent skip")

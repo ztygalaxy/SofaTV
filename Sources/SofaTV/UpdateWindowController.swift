@@ -8,7 +8,7 @@ final class UpdateNotesView: NSScrollView {
         let inset = NSSize(width: 12, height: 10)
         let text = NSTextView(frame: NSRect(x: 0, y: 0, width: width, height: 1))
         text.isEditable = false
-        text.isRichText = false
+        text.isRichText = true
         text.isSelectable = true
         text.font = .systemFont(ofSize: 13)
         text.textColor = .labelColor
@@ -20,7 +20,7 @@ final class UpdateNotesView: NSScrollView {
         text.textContainer?.lineFragmentPadding = 0
         text.textContainer?.containerSize = NSSize(width: width - inset.width * 2, height: .greatestFiniteMagnitude)
         text.textContainer?.widthTracksTextView = true
-        text.string = notes
+        text.textStorage?.setAttributedString(UpdateNotesMarkdown.render(notes))
         let layout = text.layoutManager!
         let container = text.textContainer!
         layout.ensureLayout(for: container)

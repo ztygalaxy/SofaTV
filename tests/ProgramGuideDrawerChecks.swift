@@ -25,14 +25,15 @@ import SwiftUI
         }
         xml += "</tv>"
         let channel = Channel(name: "北京卫视", group: "卫视", url: URL(string: "https://example.com/live")!)
+        let otherChannel = Channel(name: "江苏卫视", group: "卫视", url: URL(string: "https://example.com/other")!, epgID: "test")
         let entry = ProgramGuideCacheEntry(fetchedAt: at, guide: try ProgramGuide.parse(Data(xml.utf8)))
         let store = ProgramGuideStore(now: { at }, cachedGuide: { entry }, refreshGuide: { entry }, observeSystemEvents: false)
-        store.setChannels([channel])
+        store.setChannels([channel, otherChannel])
         let normal = ProgramGuidePreview(revealDelay: .zero)
         let fullscreen = ProgramGuidePreview(revealDelay: .zero)
         fullscreen.setPresentation(.fullscreen)
-        let normalHost = ProgramGuideOverlayHost(preview: normal, store: store, presentation: .embedded, playingChannel: channel.identity)
-        let fullscreenHost = ProgramGuideOverlayHost(preview: fullscreen, store: store, presentation: .fullscreen, playingChannel: channel.identity)
+        let normalHost = ProgramGuideOverlayHost(preview: normal, store: store, presentation: .embedded, playingChannel: channel)
+        let fullscreenHost = ProgramGuideOverlayHost(preview: fullscreen, store: store, presentation: .fullscreen, playingChannel: channel)
         normalHost.isInteractive = true; fullscreenHost.isInteractive = true
         normalHost.frame = NSRect(x: 0, y: 0, width: 260, height: 640)
         fullscreenHost.frame = NSRect(x: 280, y: 0, width: 340, height: 640)
@@ -75,7 +76,7 @@ import SwiftUI
             let markerX = content.convert(NSPoint(x: 1, y: 0), from: host).x
             let column = Int(markerX * CGFloat(bitmap.pixelsWide) / content.bounds.width)
             let playingChannel = (host as! ProgramGuideOverlayHost).playingChannel
-            let accent = (playingChannel == channel.identity ? NSColor.sofaAccent : NSColor.white).usingColorSpace(.deviceRGB)!
+            let accent = (playingChannel?.identity == channel.identity ? NSColor.sofaAccent : NSColor.white).usingColorSpace(.deviceRGB)!
             let markerPixels = (0..<bitmap.pixelsHigh).filter { y in
                 let color = bitmap.colorAt(x: column, y: y)!.usingColorSpace(.deviceRGB)!
                 return abs(color.redComponent - accent.redComponent) < 0.12 &&
@@ -115,6 +116,32 @@ import SwiftUI
         }
         try await settle()
         checkPosition(normalHost); checkPosition(fullscreenHost)
+
+        normal.hover(otherChannel, in: .embedded, inside: true)
+        fullscreen.hover(otherChannel, in: .fullscreen, inside: true)
+        try await settle()
+        precondition(normal.channel == otherChannel && fullscreen.channel == otherChannel)
+        normal.hoverPanel(true, in: .embedded)
+        normal.hover(otherChannel, in: .embedded, inside: false)
+        fullscreen.hoverPanel(true, in: .fullscreen)
+        fullscreen.hover(otherChannel, in: .fullscreen, inside: false)
+        normalHost.returnToCurrent(); fullscreenHost.returnToCurrent()
+        precondition(normal.channel == channel && fullscreen.channel == channel, "Return must target the playing channel, not the previewed channel")
+        precondition(normalHost.playingChannel == channel && fullscreenHost.playingChannel == channel, "Returning to the guide must preserve playback selection")
+        try await settle()
+        checkPosition(normalHost); checkPosition(fullscreenHost)
+        for host in [normalHost, fullscreenHost] {
+            let scroll = views(host).compactMap { $0 as? NSScrollView }.first!
+            scroll.contentView.scroll(to: .zero)
+            scroll.reflectScrolledClipView(scroll.contentView)
+            host.returnToCurrent()
+        }
+        try await settle()
+        checkPosition(normalHost); checkPosition(fullscreenHost)
+        normal.hoverPanel(false, in: .embedded)
+        normal.hover(channel, in: .embedded, inside: true)
+        fullscreen.hoverPanel(false, in: .fullscreen)
+        fullscreen.hover(channel, in: .fullscreen, inside: true)
         for (name, host) in [("normal", normalHost), ("fullscreen", fullscreenHost)] {
             let native = views(host)
             let scroll = native.compactMap { $0 as? NSScrollView }.first!
@@ -164,6 +191,9 @@ import SwiftUI
         normalHost.playingChannel = nil
         try await settle()
         precondition(activeScroll.contentView.bounds.origin == beforePlayingChange, "Updating the current-programme label must preserve the user's scroll position")
+        let revealBeforeInactiveReturn = normal.revealID
+        normalHost.returnToCurrent()
+        precondition(normal.revealID == revealBeforeInactiveReturn, "Without a playing channel there is no return target")
         checkPosition(normalHost, boundary: .bottom)
         checkPosition(fullscreenHost, boundary: .bottom)
         if CommandLine.arguments.count > 1 {

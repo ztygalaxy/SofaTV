@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 @main struct ProgramGuidePreviewChecks {
     @MainActor private static func settle() async {
@@ -12,6 +13,8 @@ import Foundation
         let a = Channel(name: "北京卫视", group: "卫视", url: URL(string: "https://example.com/a")!)
         let b = Channel(name: "江苏卫视", group: "卫视", url: URL(string: "https://example.com/b")!)
         let preview = ProgramGuidePreview(revealDelay: .zero, dismissDelay: .zero)
+        var focusRequests: [ProgramGuidePreview.ChannelFocusRequest] = []
+        let focusObservation = preview.channelFocusRequests.sink { focusRequests.append($0) }
         preview.hover(a, in: .embedded, inside: true)
         preview.hover(b, in: .embedded, inside: true)
         preview.hover(a, in: .embedded, inside: false)
@@ -63,6 +66,25 @@ import Foundation
         preview.acceptsHover = true
         preview.hover(a, in: .embedded, inside: true)
         await waitFor { preview.channel == a }
+
+        preview.hoverPanel(true, in: .embedded)
+        preview.hover(b, in: .embedded, inside: true)
+        precondition(focusRequests.isEmpty, "Hovering must not scroll either channel list")
+        preview.showPlayingChannel(a, in: .embedded)
+        let returnedReveal = preview.revealID
+        await settle()
+        precondition(preview.channel == a && preview.panelHovered && preview.hoveredRow == nil, "Returning must cancel pending hover and keep the current-channel guide open")
+        preview.showPlayingChannel(a, in: .embedded)
+        precondition(preview.revealID == returnedReveal + 1, "Returning to the same channel must also request current-programme centering")
+        preview.showPlayingChannel(b, in: .fullscreen)
+        precondition(preview.channel == a, "An inactive presentation must not change the preview")
+        preview.acceptsHover = false
+        preview.showPlayingChannel(b, in: .embedded)
+        precondition(preview.channel == a, "A return action must not interrupt ordered sidebar dismissal")
+        precondition(focusRequests.count == 2 && focusRequests.allSatisfy { $0.channel == a && $0.presentation == .embedded })
+        precondition(focusRequests[0].revision != focusRequests[1].revision, "Repeated returns must issue distinct channel-list scroll requests")
+        withExtendedLifetime(focusObservation) {}
+        preview.acceptsHover = true
         print("Guide hover passed: rapid row changes, row-to-panel handoff, stale exits, full-screen/main isolation, mini mode, and cancellation")
     }
 }

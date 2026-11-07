@@ -2,7 +2,7 @@
 set -eu
 cd "${0:A:h:h}"
 export CLANG_MODULE_CACHE_PATH=/private/tmp/sofatv-clang
-version="$(tr -d '[:space:]' < VERSION)"
+version="${SOFATV_BUILD_VERSION:-$(tr -d '[:space:]' < VERSION)}"
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { print -u2 "Invalid VERSION: $version"; exit 1; }
 python3 scripts/build-cmg-macos.py
 python3 scripts/build-h5e-macos.py

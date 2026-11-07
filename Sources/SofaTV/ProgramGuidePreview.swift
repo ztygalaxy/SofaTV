@@ -4,6 +4,12 @@ import Combine
 /// Hover state is independent of the channel library, so browsing does not rebuild its rows.
 @MainActor final class ProgramGuidePreview: ObservableObject {
     enum Presentation: Equatable, Sendable { case embedded, fullscreen }
+    struct ChannelFocusRequest: Equatable {
+        let channel: Channel
+        let presentation: Presentation
+        let revision: Int
+    }
+    let channelFocusRequests = PassthroughSubject<ChannelFocusRequest, Never>()
     @Published private(set) var channel: Channel?
     @Published private(set) var revealID = 0
     @Published private(set) var panelHovered = false
@@ -53,6 +59,15 @@ import Combine
         panelHovered = inside
         if inside { dismissTask?.cancel() }
         else { scheduleDismiss() }
+    }
+
+    func showPlayingChannel(_ channel: Channel, in presentation: Presentation) {
+        guard acceptsHover, self.presentation == presentation, dismissalCompletion == nil else { return }
+        revealTask?.cancel(); dismissTask?.cancel()
+        hoveredRow = nil
+        revealID += 1
+        self.channel = channel
+        channelFocusRequests.send(ChannelFocusRequest(channel: channel, presentation: presentation, revision: revealID))
     }
 
     func dismiss(completion: (() -> Void)? = nil) {

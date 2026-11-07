@@ -336,13 +336,13 @@ struct VideoStage: NSViewRepresentable {
             updateGuidePresentation()
         }
         func configureFullscreenChannelPicker(library: Library, ui: UIState, programGuide: ProgramGuideStore, preview: ProgramGuidePreview) {
-            guideHost?.playingChannel = library.selected?.identity
+            guideHost?.playingChannel = library.selected
             guard !fullscreenPickerConfigured else { return }
             fullscreenPickerConfigured = true
             guidePreview = preview
             fullscreenDrawer.setContent(AnyView(FullscreenChannelPicker(library: library, ui: ui, programGuide: programGuide, guidePreview: preview)))
             let guide = ProgramGuideOverlayHost(preview: preview, store: programGuide, presentation: .fullscreen,
-                                                playingChannel: library.selected?.identity)
+                                                playingChannel: library.selected)
             guideHost = guide
             addSubview(guide, positioned: .above, relativeTo: fullscreenDrawer)
             preview.$channel.receive(on: DispatchQueue.main).sink { [weak self] _ in
@@ -726,6 +726,10 @@ private struct FullscreenChannelPicker: View {
                     SidebarEmptyView(ui.favoritesOnly ? "暂无收藏频道" : "没有匹配的频道", systemImage: ui.favoritesOnly ? "star" : "magnifyingglass")
                 }
             }
+
+            .modifier(ChannelListFocus(preview: guidePreview, presentation: .fullscreen,
+                                       favorites: library.favorites, search: $ui.search,
+                                       favoritesOnly: $ui.favoritesOnly, collapsedGroups: $ui.collapsedGroups))
 
             HStack(spacing: 8 * contentScale) {
                 AppLogoView(size: 16 * contentScale)
