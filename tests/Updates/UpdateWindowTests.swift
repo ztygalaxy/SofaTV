@@ -39,11 +39,18 @@ struct UpdateWindowTests {
         let install = try unwrap(buttons.first { $0.title == "下载并安装" })
         let skipRect = skip.convert(skip.bounds, to: content)
         let laterRect = later.convert(later.bounds, to: content)
-        let installRect = install.convert(install.bounds, to: content)
+        // NSStackView aligns alignment rectangles. Native bezel outsets differ
+        // between macOS releases and between bordered/borderless buttons.
+        func alignmentRect(_ button: NSButton) -> NSRect {
+            button.superview!.convert(button.alignmentRect(forFrame: button.frame), to: content)
+        }
+        let skipAlignment = alignmentRect(skip)
+        let laterAlignment = alignmentRect(later)
+        let installAlignment = alignmentRect(install)
         check(skipRect.maxX + 80 < laterRect.minX)
-        check(abs(skipRect.midY - laterRect.midY) < 1)
-        check(abs(laterRect.midY - installRect.midY) < 1)
-        check(abs(content.bounds.maxX - installRect.maxX - 24) < 3)
+        check(abs(skipAlignment.midY - laterAlignment.midY) < 1)
+        check(abs(laterAlignment.midY - installAlignment.midY) < 1)
+        check(abs(content.bounds.maxX - installAlignment.maxX - 24) < 1)
         check(NSApp.modalWindow == nil && window.sheetParent == nil)
         if let bitmap = content.bitmapImageRepForCachingDisplay(in: content.bounds) {
             content.cacheDisplay(in: content.bounds, to: bitmap)
