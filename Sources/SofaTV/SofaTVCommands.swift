@@ -23,7 +23,7 @@ struct SofaTVCommands: Commands {
             Button("导入在线列表…") { library?.showAddressWindow(direct: false) }.keyboardShortcut("o", modifiers: [.command, .shift]).disabled(library == nil)
             Button("打开直播地址…") { library?.showAddressWindow(direct: true) }.keyboardShortcut("l").disabled(library == nil)
             Divider()
-            Button("恢复内置频道") { library?.restoreBuiltins() }.disabled(library == nil)
+            if let library { ChannelSourceMenu(library: library) }
             Button("管理频道列表…") { library?.showListManager() }.disabled(library == nil)
         }
         CommandMenu("播放") {
@@ -32,6 +32,20 @@ struct SofaTVCommands: Commands {
     }
     @MainActor private func showAbout() { AboutWindowController.shared.show() }
     @MainActor private func checkForUpdates() { UpdateChecker.shared.check() }
+}
+
+private struct ChannelSourceMenu: View {
+    @ObservedObject var library: Library
+    var body: some View {
+        Button(library.updatingSourceIDs.isEmpty ? "更新频道列表" : "正在更新频道列表…") {
+            library.refreshOnlineChannels()
+        }
+        .disabled(!library.updatingSourceIDs.isEmpty || !library.channelLists.contains { $0.remoteURL != nil })
+        if !library.channelLists.contains(where: { $0.id == OnlineChannelSource.defaultID }) {
+            Button("添加默认频道") { library.addDefaultChannels() }
+                .disabled(!library.updatingSourceIDs.isEmpty)
+        }
+    }
 }
 
 private struct PlaybackMenu: View {

@@ -687,7 +687,7 @@ private struct FullscreenChannelPicker: View {
                             ChannelRow(
                                 channel: channel,
                                 isFavorite: library.favorites.contains(channel.id),
-                                isSelected: library.selected?.id == channel.id,
+                                isSelected: library.selected?.identity == channel.identity,
                                 currentProgram: programGuide.titles[channel.id],
                                 onPlay: { library.play(channel) },
                                 onFavorite: { library.favorite(channel) },
@@ -701,7 +701,7 @@ private struct FullscreenChannelPicker: View {
                             .onDisappear { guidePreview.hover(channel, in: .fullscreen, inside: false) }
                             .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
                             .listRowBackground(ChannelRowHighlight(preview: guidePreview, channel: channel.identity,
-                                                                  presentation: .fullscreen, selected: library.selected?.id == channel.id))
+                                                                  presentation: .fullscreen, selected: library.selected?.identity == channel.identity))
                             .listRowSeparator(.hidden)
                         }
                     }

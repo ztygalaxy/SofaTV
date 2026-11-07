@@ -9,7 +9,8 @@ let package = Package(
     ],
     targets: [
         .target(name: "UpdateSupport"),
-        .executableTarget(name: "SofaTV", dependencies: ["UpdateSupport"], resources: [.process("Resources")]),
-        .executableTarget(name: "SofaTVUpdater", dependencies: ["UpdateSupport"])
+        .executableTarget(name: "SofaTV", dependencies: ["UpdateSupport"]),
+        .executableTarget(name: "SofaTVUpdater", dependencies: ["UpdateSupport"]),
+        .testTarget(name: "OnlineChannelTests", dependencies: ["SofaTV"], path: "tests/OnlineChannels")
     ]
 )

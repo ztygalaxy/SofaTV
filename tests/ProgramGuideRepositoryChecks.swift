@@ -47,7 +47,7 @@ private actor PayloadStub {
 
         if CommandLine.arguments.contains("--live") {
             let live = try await ProgramGuideRepository(cacheURL: folder.appendingPathComponent("live.json")).refresh()
-            let playlist = try String(contentsOfFile: "Sources/SofaTV/Resources/builtin_channels.txt", encoding: .utf8)
+            let playlist = try String(contentsOfFile: "vendor/cjs-main/cmg.m3u", encoding: .utf8)
             let channels = try ChannelCatalog.parse(playlist)
             let now = Date()
             let missing = channels.filter { live.guide.currentTitle(channel: $0, at: now) == nil }

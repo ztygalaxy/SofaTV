@@ -276,11 +276,11 @@ import Foundation
 
         if CommandLine.arguments.count > 1 {
             let liveGuide = try ProgramGuide.parse(Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[1])))
-            let builtinText = try String(contentsOfFile: "Sources/SofaTV/Resources/builtin_channels.txt", encoding: .utf8)
+            let builtinText = try String(contentsOfFile: "vendor/cjs-main/cmg.m3u", encoding: .utf8)
             let builtins = try ChannelCatalog.parse(builtinText)
             let checkedAt = Date()
             let missing = builtins.filter { liveGuide.currentTitle(channel: $0, at: checkedAt) == nil }.map(\.name)
-            print("Real XMLTV sample: \(builtins.count - missing.count)/\(builtins.count) built-in channels have a current programme at \(checkedAt)")
+            print("Real XMLTV sample: \(builtins.count - missing.count)/\(builtins.count) upstream channels have a current programme at \(checkedAt)")
             if !missing.isEmpty { print("Without current programme: \(missing.joined(separator: ", "))") }
             for name in ["CCTV-4 中文国际（亚）", "CCTV-4 中文国际（欧）", "CCTV-4 中文国际（美）", "CCTV4K", "CCTV8K"] {
                 print("\(name): \(liveGuide.currentTitle(channel: channel(name), at: checkedAt) ?? "无节目")")

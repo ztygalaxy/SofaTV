@@ -1,7 +1,7 @@
 import Foundation
 
 struct Channel: Identifiable, Codable, Hashable, Sendable {
-    struct Identity: Hashable {
+    struct Identity: Hashable, Codable, Sendable {
         let name: String
         let group: String
         init(_ channel: Channel) { name = channel.name; group = channel.group }
@@ -28,17 +28,43 @@ struct Channel: Identifiable, Codable, Hashable, Sendable {
     }
 }
 
-struct ChannelList: Identifiable, Codable, Hashable {
-    enum Kind: String, Codable { case builtIn, file, online, legacy }
+struct ChannelList: Identifiable, Codable, Hashable, Sendable {
+    // builtIn remains decodable for migration from earlier versions.
+    enum Kind: String, Codable, Sendable { case builtIn, file, online, legacy }
+    struct RemovedSource: Codable, Hashable, Sendable {
+        let channel: Channel.Identity
+        let url: URL
+    }
     let id: String
     var name: String
     var detail: String
     var kind: Kind
     var importedAt: Date
     var channels: [Channel]
+    var lastCheckedAt: Date? = nil
+    var eTag: String? = nil
+    var lastModified: String? = nil
+    var removedChannels: Set<Channel.Identity>? = nil
+    var removedGroups: Set<String>? = nil
+    var removedSources: Set<RemovedSource>? = nil
 
-    static func builtIn() -> ChannelList {
-        ChannelList(id: "builtin", name: "内置频道", detail: "随应用提供", kind: .builtIn, importedAt: Date(), channels: [])
+    var remoteURL: URL? {
+        guard kind == .online, let url = URL(string: detail),
+              ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.host != nil else { return nil }
+        return url
+    }
+    var hasRemovals: Bool {
+        removedChannels?.isEmpty == false || removedGroups?.isEmpty == false || removedSources?.isEmpty == false
+    }
+    func applyingRemovals(to channels: [Channel]) -> [Channel] {
+        channels.compactMap { channel in
+            guard removedChannels?.contains(channel.identity) != true,
+                  removedGroups?.contains(channel.group) != true else { return nil }
+            return channel.sources.reduce(Optional(channel)) { remaining, url in
+                removedSources?.contains(RemovedSource(channel: channel.identity, url: url)) == true
+                    ? remaining?.removing(url) : remaining
+            }
+        }
     }
     static func file(_ url: URL) -> ChannelList {
         ChannelList(id: "file:" + url.standardizedFileURL.path, name: url.deletingPathExtension().lastPathComponent, detail: url.lastPathComponent, kind: .file, importedAt: Date(), channels: [])
@@ -141,6 +167,7 @@ enum ChannelCatalog {
         lists.map { list in
             guard listID == nil || list.id == listID else { return list }
             var list = list
+            if list.remoteURL != nil { list.removedChannels = (list.removedChannels ?? []).union([channel.identity]) }
             list.channels.removeAll { $0.name == channel.name && $0.group == channel.group }
             return list
         }
@@ -150,6 +177,9 @@ enum ChannelCatalog {
         lists.map { list in
             guard listID == nil || list.id == listID else { return list }
             var list = list
+            if list.remoteURL != nil {
+                list.removedSources = (list.removedSources ?? []).union([.init(channel: channel.identity, url: source)])
+            }
             list.channels = list.channels.compactMap { candidate in
                 guard candidate.name == channel.name, candidate.group == channel.group else { return candidate }
                 return candidate.removing(source)
@@ -160,7 +190,9 @@ enum ChannelCatalog {
 
     static func deletingGroup(_ group: String, from lists: [ChannelList]) -> [ChannelList] {
         lists.map { list in
-            var list = list; list.channels.removeAll { $0.group == group }; return list
+            var list = list
+            if list.remoteURL != nil { list.removedGroups = (list.removedGroups ?? []).union([group]) }
+            list.channels.removeAll { $0.group == group }; return list
         }
     }
 }

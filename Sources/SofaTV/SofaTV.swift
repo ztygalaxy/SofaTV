@@ -8,23 +8,30 @@ import WebKit
     @Published var favorites: Set<String> = []
     @Published var selected: Channel?
     @Published var loading = false
+    @Published private(set) var updatingSourceIDs: Set<String> = []
+    @Published private(set) var sourceUpdateErrors: [String: String] = [:]
+    private var startedSourceUpdates = false
+    private var sourceUpdateTask: Task<Void, Never>?
+    private let defaults: UserDefaults
+    private let channelRepository: OnlineChannelRepository
+    private let warmsChannels: Bool
     @Published var sourceIndex = 0
     @Published var webChannel: URL?
     @Published var playbackStatus = "就绪"
     @Published private var playbackVolume = PlaybackVolume(
-        isMuted: UserDefaults.standard.bool(forKey: "playback-muted"),
-        volumeBeforeMute: (UserDefaults.standard.object(forKey: "playback-volume-before-mute") as? NSNumber)?.floatValue ?? 0.3
+        isMuted: false,
+        volumeBeforeMute: 0.3
     )
     var volume: Float { playbackVolume.volume }
     var isMuted: Bool { playbackVolume.isMuted }
-    @Published var quality = UserDefaults.standard.integer(forKey: "quality") {
+    @Published var quality = 0 {
         didSet {
-            UserDefaults.standard.set(quality, forKey: "quality"); applySettings()
+            defaults.set(quality, forKey: "quality"); applySettings()
             if oldValue != quality, let selected { play(selected) }
         }
     }
-    @Published var mode = UserDefaults.standard.integer(forKey: "mode") { didSet { UserDefaults.standard.set(mode, forKey: "mode"); applySettings() } }
-    @Published var stretch = UserDefaults.standard.bool(forKey: "stretch") { didSet { UserDefaults.standard.set(stretch, forKey: "stretch") } }
+    @Published var mode = 0 { didSet { defaults.set(mode, forKey: "mode"); applySettings() } }
+    @Published var stretch = false { didSet { defaults.set(stretch, forKey: "stretch") } }
     @Published var videoVisible = false
     @Published var webVideo = false
     let resolver = WebMediaResolver()
@@ -60,12 +67,9 @@ import WebKit
         player.currentItem?.preferredForwardBufferDuration = mode == 2 ? 1 : mode == 1 ? 5 : 15
         player.automaticallyWaitsToMinimizeStalling = mode != 2
     }
-    func restoreBuiltins() {
-        do { guard let url = Bundle.main.url(forResource: "builtin_channels", withExtension: "txt") else { throw NSError(domain: "SofaTV", code: 2, userInfo: [NSLocalizedDescriptionKey: "应用内置频道文件缺失，请重新安装完整应用。"]) }; try parse(String(contentsOf: url, encoding: .utf8), as: .builtIn()) } catch { showError(error.localizedDescription) }
-    }
     func changeSource(_ index: Int) {
         guard let channel = selected, channel.sources.indices.contains(index) else { return }
-        UserDefaults.standard.set(channel.sources[index].absoluteString, forKey: "line-" + channel.id)
+        defaults.set(channel.sources[index].absoluteString, forKey: "line-" + preferenceID(for: channel))
         attempted = []; allowReducedH5e = false; deferredH5eIndex = nil; start(channel, index: index)
     }
     func reloadCurrentChannel() {
@@ -75,7 +79,7 @@ import WebKit
     }
     func nextChannel(_ offset: Int) {
         guard !channels.isEmpty else { return }
-        guard let selected, let index = channels.firstIndex(of: selected) else {
+        guard let selected, let index = channels.firstIndex(where: { $0.identity == selected.identity }) else {
             play(offset < 0 ? channels[channels.count - 1] : channels[0]); return
         }
         play(channels[(index + offset + channels.count) % channels.count])
@@ -101,18 +105,21 @@ import WebKit
         // Engine mute flags belong to playback handoff; amplitude zero keeps both engines silent.
         player.volume = next.volume
         resolver.setVolume(next.volume)
-        UserDefaults.standard.set(next.isMuted, forKey: "playback-muted")
-        UserDefaults.standard.set(next.volumeBeforeMute, forKey: "playback-volume-before-mute")
+        defaults.set(next.isMuted, forKey: "playback-muted")
+        defaults.set(next.volumeBeforeMute, forKey: "playback-volume-before-mute")
         if rememberChannel, next.volume > 0, let selected {
-            UserDefaults.standard.set(next.volume, forKey: "volume-" + selected.id)
+            defaults.set(next.volume, forKey: "volume-" + preferenceID(for: selected))
         }
     }
     private func restoreVolume(for channel: Channel) {
         let key = "volume-" + channel.id
-        let level = UserDefaults.standard.object(forKey: key) == nil ? 0.3 : UserDefaults.standard.float(forKey: key)
+        let level = defaults.object(forKey: key) == nil ? 0.3 : defaults.float(forKey: key)
         var next = playbackVolume
         next.restoreChannelVolume(level)
         applyVolume(next, rememberChannel: false)
+    }
+    private func preferenceID(for channel: Channel) -> String {
+        channels.first(where: { $0.identity == channel.identity })?.id ?? channel.id
     }
     private func failed(_ channel: Channel, index: Int, message: String) {
         guard selected?.id == channel.id, sourceIndex == index else { return }
@@ -160,9 +167,10 @@ import WebKit
         return page
     }
     private func configureWarmup() {
+        guard warmsChannels else { return }
         let pages = channels.flatMap(\.sources).compactMap(webpageURL)
         var priority: [URL] = []
-        if let selected, let index = channels.firstIndex(of: selected), channels.count > 1 {
+        if let selected, let index = channels.firstIndex(where: { $0.identity == selected.identity }), channels.count > 1 {
             priority += [channels[(index + 1) % channels.count], channels[(index - 1 + channels.count) % channels.count]]
                 .flatMap(\.sources).compactMap(webpageURL)
         }
@@ -354,16 +362,71 @@ import WebKit
             self.playbackStatus = "原生视频播放中"
         }
     }
-    init() {
+    init(defaults: UserDefaults = .standard, channelRepository: OnlineChannelRepository = .shared, warmsChannels: Bool = true) {
+        self.defaults = defaults; self.channelRepository = channelRepository; self.warmsChannels = warmsChannels
+        quality = defaults.integer(forKey: "quality"); mode = defaults.integer(forKey: "mode")
+        stretch = defaults.bool(forKey: "stretch")
+        playbackVolume = PlaybackVolume(isMuted: defaults.bool(forKey: "playback-muted"),
+            volumeBeforeMute: (defaults.object(forKey: "playback-volume-before-mute") as? NSNumber)?.floatValue ?? 0.3)
         player.audiovisualBackgroundPlaybackPolicy = .continuesIfPossible
-        if let data = UserDefaults.standard.data(forKey: "channel-lists"), let saved = try? JSONDecoder().decode([ChannelList].self, from: data) {
+        if let data = defaults.data(forKey: "channel-lists"), let saved = try? JSONDecoder().decode([ChannelList].self, from: data) {
             channelLists = saved; channels = ChannelCatalog.merge(saved)
-        } else if let data = UserDefaults.standard.data(forKey: "channels"), let saved = try? JSONDecoder().decode([Channel].self, from: data), !saved.isEmpty {
+        } else if let data = defaults.data(forKey: "channels"), let saved = try? JSONDecoder().decode([Channel].self, from: data), !saved.isEmpty {
             channelLists = [.legacy(saved)]; channels = saved
         }
-        favorites = Set(UserDefaults.standard.stringArray(forKey: "favorites") ?? [])
+        favorites = Set(defaults.stringArray(forKey: "favorites") ?? [])
+        channelLists = OnlineChannelSource.migrate(channelLists,
+            addDefault: !defaults.bool(forKey: "online-default-initialized"))
+        channels = ChannelCatalog.merge(channelLists)
         persistLibrary()
+        defaults.set(true, forKey: "online-default-initialized")
         configureWarmup()
+    }
+    func startOnlineUpdates() {
+        guard !startedSourceUpdates else { return }
+        startedSourceUpdates = true
+        refreshOnlineChannels()
+    }
+    func addDefaultChannels() {
+        guard !channelLists.contains(where: { $0.id == OnlineChannelSource.defaultID }) else { return }
+        channelLists.insert(OnlineChannelSource.defaultList(), at: 0)
+        persistLibrary()
+        refreshOnlineChannels()
+    }
+    func refreshOnlineChannels(listID: String? = nil, restoreRemoved: Bool = false) {
+        guard updatingSourceIDs.isEmpty else { return }
+        let lists = channelLists.filter { $0.remoteURL != nil && (listID == nil || $0.id == listID) }
+        guard !lists.isEmpty else { return }
+        updatingSourceIDs = Set(lists.map(\.id))
+        for list in lists { sourceUpdateErrors.removeValue(forKey: list.id) }
+        sourceUpdateTask = Task { [weak self] in
+            await self?.performOnlineRefresh(lists, restoreRemoved: restoreRemoved)
+        }
+    }
+    private func performOnlineRefresh(_ lists: [ChannelList], restoreRemoved: Bool) async {
+        defer { updatingSourceIDs = []; sourceUpdateTask = nil }
+        await withTaskGroup(of: (ChannelList, Result<OnlineChannelUpdate, Error>).self) { group in
+            for list in lists {
+                group.addTask { [repository = channelRepository] in
+                    do { return (list, .success(try await repository.refresh(list, force: restoreRemoved))) }
+                    catch { return (list, .failure(error)) }
+                }
+            }
+            for await (requested, result) in group {
+                // Do not recreate sources removed while their downloads were running.
+                guard let index = channelLists.firstIndex(where: { $0.id == requested.id && $0.remoteURL == requested.remoteURL }) else { continue }
+                switch result {
+                case .success(let update):
+                    var current = channelLists[index]
+                    if restoreRemoved {
+                        current.removedChannels = nil; current.removedGroups = nil; current.removedSources = nil
+                    }
+                    channelLists[index] = update.applying(to: current)
+                    rebuildChannels(preservingPlayback: true)
+                case .failure(let error): sourceUpdateErrors[requested.id] = error.localizedDescription
+                }
+            }
+        }
     }
     func play(_ channel: Channel) {
         timeout?.cancel(); observation = nil; resolver.cancel(); session = UUID(); webChannel = nil
@@ -376,27 +439,27 @@ import WebKit
             showError("这个频道没有可用线路。")
             return
         }
-        let saved = UserDefaults.standard.string(forKey: "line-" + channel.id)
+        let saved = defaults.string(forKey: "line-" + channel.id)
         let index = channel.sources.firstIndex(where: { $0.absoluteString == saved }) ?? channel.sources.firstIndex(where: { $0.scheme != "webview" }) ?? 0
         start(channel, index: index)
         configureWarmup()
     }
     func favorite(_ channel: Channel) {
         if favorites.contains(channel.id) { favorites.remove(channel.id) } else { favorites.insert(channel.id) }
-        UserDefaults.standard.set(Array(favorites), forKey: "favorites")
+        defaults.set(Array(favorites), forKey: "favorites")
         configureWarmup()
     }
     private func persistLibrary() {
-        if let data = try? JSONEncoder().encode(channelLists) { UserDefaults.standard.set(data, forKey: "channel-lists") }
-        if let data = try? JSONEncoder().encode(channels) { UserDefaults.standard.set(data, forKey: "channels") }
-        UserDefaults.standard.set(Array(favorites), forKey: "favorites")
+        if let data = try? JSONEncoder().encode(channelLists) { defaults.set(data, forKey: "channel-lists") }
+        if let data = try? JSONEncoder().encode(channels) { defaults.set(data, forKey: "channels") }
+        defaults.set(Array(favorites), forKey: "favorites")
     }
     private func migratePreferences(from oldID: String, to newID: String) {
         guard oldID != newID else { return }
-        if let value = UserDefaults.standard.object(forKey: "volume-" + oldID) { UserDefaults.standard.set(value, forKey: "volume-" + newID) }
-        if let value = UserDefaults.standard.string(forKey: "line-" + oldID) { UserDefaults.standard.set(value, forKey: "line-" + newID) }
-        UserDefaults.standard.removeObject(forKey: "volume-" + oldID)
-        UserDefaults.standard.removeObject(forKey: "line-" + oldID)
+        if let value = defaults.object(forKey: "volume-" + oldID) { defaults.set(value, forKey: "volume-" + newID) }
+        if let value = defaults.string(forKey: "line-" + oldID) { defaults.set(value, forKey: "line-" + newID) }
+        defaults.removeObject(forKey: "volume-" + oldID)
+        defaults.removeObject(forKey: "line-" + oldID)
     }
     func stopPlayback() {
         sleepPrevention.setPlaying(false)
@@ -407,7 +470,7 @@ import WebKit
         DockIconController.shared.reset()
         videoVisible = false; webVideo = false; resolving = false; playbackStatus = "就绪"
     }
-    private func rebuildChannels() {
+    private func rebuildChannels(preservingPlayback: Bool = false) {
         let previousChannels = channels
         let previousSelected = selected
         let previousSource = previousSelected.flatMap { channel in channel.sources.indices.contains(sourceIndex) ? channel.sources[sourceIndex] : nil }
@@ -421,6 +484,9 @@ import WebKit
         }
         favorites.formIntersection(Set(channels.map(\.id)))
         configureWarmup()
+        // Playback callbacks capture this channel and source index. Keep that
+        // snapshot even when an online update removes or reorders its sources.
+        if preservingPlayback { persistLibrary(); return }
         guard selectedWasManaged, let previousSelected else { persistLibrary(); return }
         if let refreshed = refreshedByIdentity[previousSelected.identity] {
             self.selected = refreshed
@@ -450,13 +516,21 @@ import WebKit
         channelLists = ChannelCatalog.deletingGroup(group, from: channelLists); rebuildChannels()
     }
     func deleteList(_ list: ChannelList) {
-        channelLists.removeAll { $0.id == list.id }; rebuildChannels()
+        channelLists.removeAll { $0.id == list.id }; sourceUpdateErrors.removeValue(forKey: list.id); rebuildChannels()
     }
     func load(_ address: String, direct: Bool) async {
         guard let url = URL(string: address), ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { showError("请输入有效的 HTTP/HTTPS 地址"); return }
         if direct { play(Channel(name: url.lastPathComponent, group: "直播", url: url)); return }
         loading = true; defer { loading = false }
-        do { let (data, response) = try await URLSession.shared.data(from: url); guard (response as? HTTPURLResponse)?.statusCode == 200, let text = String(data: data, encoding: .utf8) else { throw URLError(.badServerResponse) }; try parse(text, as: .online(url)) } catch { showError(error.localizedDescription) }
+        do {
+            let list = channelLists.first(where: { $0.remoteURL == url }) ?? .online(url)
+            let update = try await channelRepository.refresh(list, force: true)
+            if let index = channelLists.firstIndex(where: { $0.id == list.id }) {
+                channelLists[index] = update.applying(to: channelLists[index])
+            } else { channelLists.append(update.applying(to: list)) }
+            sourceUpdateErrors.removeValue(forKey: list.id)
+            rebuildChannels(preservingPlayback: true)
+        } catch { showError(error.localizedDescription) }
     }
 }
 enum LibraryDeletion {
@@ -611,7 +685,7 @@ struct ContentView: View {
                                 ChannelRow(
                                     channel: channel,
                                     isFavorite: library.favorites.contains(channel.id),
-                                    isSelected: library.selected?.id == channel.id,
+                                    isSelected: library.selected?.identity == channel.identity,
                                     currentProgram: programGuide.titles[channel.id],
                                     onPlay: { library.play(channel) },
                                     onFavorite: { library.favorite(channel) },
@@ -623,7 +697,7 @@ struct ContentView: View {
                                 .onDisappear { guidePreview.hover(channel, in: .embedded, inside: false) }
                                 .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
                                 .listRowBackground(ChannelRowHighlight(preview: guidePreview, channel: channel.identity,
-                                                                      selected: library.selected?.id == channel.id))
+                                                                      selected: library.selected?.identity == channel.identity))
                                 .listRowSeparator(.hidden)
                             }
                         }
@@ -638,11 +712,23 @@ struct ContentView: View {
                     }
                     .overlay {
                     if library.channels.isEmpty {
-                        SidebarEmptyView(
-                            "添加你的频道",
-                            systemImage: "tv",
-                            description: "从菜单栏的“频道”菜单导入列表"
-                        )
+                        VStack(spacing: 12) {
+                            SidebarEmptyView(
+                                library.updatingSourceIDs.isEmpty ? "暂无频道" : "正在获取频道…",
+                                systemImage: "tv",
+                                description: library.sourceUpdateErrors.isEmpty
+                                    ? "也可以从“频道”菜单导入自己的列表"
+                                    : "更新未成功，请重试或导入自己的列表"
+                            )
+                            if library.updatingSourceIDs.isEmpty {
+                                HStack {
+                                    Button("重试") { library.refreshOnlineChannels() }
+                                        .disabled(!library.channelLists.contains { $0.remoteURL != nil })
+                                    Button("导入列表…") { library.importChannels() }
+                                }
+                            } else { ProgressView().controlSize(.small) }
+                        }
+                        .padding(.bottom, 20)
                     } else if snapshot.channelCount == 0 {
                         if ui.favoritesOnly {
                             SidebarEmptyView(
@@ -718,6 +804,7 @@ struct ContentView: View {
         .focusedSceneValue(\.channelLibrary, library)
         .onAppear {
             programGuide.setChannels(library.channels)
+            library.startOnlineUpdates()
             UpdateChecker.shared.startAutomaticCheck { [weak library = library] in library?.selected != nil }
         }
         .onChange(of: library.channels) { _, channels in programGuide.setChannels(channels) }

@@ -15,6 +15,7 @@ swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/Sof
 swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/SofaTV/SidebarToggleButton.swift tests/SidebarToggleButtonChecks.swift -o /private/tmp/sofatv-sidebar-button-check
 /private/tmp/sofatv-sidebar-button-check
 python3 tests/check-playlist.py
+swift test --disable-sandbox --cache-path /private/tmp/sofatv-cache --filter OnlineChannelTests
 swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/SofaTV/SofaTheme.swift Sources/SofaTV/ChannelListPinnedHeader.swift tests/ChannelListPinnedHeaderChecks.swift -o /private/tmp/sofatv-pinned-header-check
 /private/tmp/sofatv-pinned-header-check
 swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/SofaTV/SofaTheme.swift Sources/SofaTV/ChannelListPinnedHeader.swift Sources/SofaTV/ChannelListScrollStyle.swift tests/ChannelListScrollStyleChecks.swift -o /private/tmp/sofatv-scroll-style-check

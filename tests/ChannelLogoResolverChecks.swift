@@ -2,7 +2,7 @@ import Foundation
 
 @main struct ChannelLogoResolverChecks {
     static func main() throws {
-        let playlist = try String(contentsOfFile: "Sources/SofaTV/Resources/builtin_channels.txt", encoding: .utf8)
+        let playlist = try String(contentsOfFile: "vendor/cjs-main/cmg.m3u", encoding: .utf8)
         let logoDirectory = "Assets/ChannelLogos"
         let availableResources = Set(try FileManager.default.contentsOfDirectory(atPath: logoDirectory)
             .filter { $0.lowercased().hasSuffix(".png") }
@@ -21,6 +21,6 @@ import Foundation
         precondition(ChannelLogoResolver.resourceName(for: "央视新闻频道") == "CCTV13")
         precondition(ChannelLogoResolver.resourceName(for: "凤凰卫视资讯台 高清", availableResources: availableResources) == "凤凰卫视资讯台")
         precondition(ChannelLogoResolver.resourceName(for: "一个自定义频道", availableResources: availableResources) == nil)
-        print("Channel logo resolution passed for \(Set(channelNames).count) built-in channels and \(availableResources.count) bundled assets")
+        print("Channel logo resolution passed for \(Set(channelNames).count) upstream channels and \(availableResources.count) bundled assets")
     }
 }

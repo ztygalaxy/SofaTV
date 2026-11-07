@@ -5,7 +5,7 @@ struct ChannelListManager: View {
     @ObservedObject var library: Library
     let onResize: (NSSize) -> Void
     let onClose: () -> Void
-    private static let rowHeight: CGFloat = 64
+    private static let rowHeight: CGFloat = 80
     private static let maximumVisibleSources = 5
 
     static func windowSize(sourceCount: Int) -> NSSize {
@@ -31,6 +31,7 @@ struct ChannelListManager: View {
                         Text(list.name).font(.system(size: 13, weight: .semibold)).lineLimit(1)
                         Text(list.detail).font(.caption).foregroundStyle(.secondary)
                             .lineLimit(1).truncationMode(.middle).help(list.detail)
+                        if list.remoteURL != nil { ChannelSourceStatus(library: library, list: list) }
                     }
                     Spacer(minLength: 12)
                     Text("\(list.channels.count) 个频道").font(.system(size: 12)).foregroundStyle(.secondary)
@@ -42,6 +43,13 @@ struct ChannelListManager: View {
             }
             .buttonStyle(.plain)
             .help("查看“\(list.name)”中的频道")
+            if list.remoteURL != nil {
+                Button { library.refreshOnlineChannels(listID: list.id) } label: {
+                    Image(systemName: "arrow.clockwise").frame(width: 24, height: 32)
+                }
+                .buttonStyle(.borderless).help("更新这份频道来源")
+                .disabled(!library.updatingSourceIDs.isEmpty)
+            }
             Button(role: .destructive) { library.confirmDeletion(.list(list)) } label: {
                 Image(systemName: "trash").frame(width: 28, height: 32)
             }
@@ -106,6 +114,19 @@ struct ChannelListDetail: View {
                     Text(list.name).font(.headline).lineLimit(1)
                     Text(list.detail).font(.caption).foregroundStyle(.secondary)
                         .lineLimit(1).truncationMode(.middle).help(list.detail)
+                    if list.remoteURL != nil {
+                        HStack {
+                            ChannelSourceStatus(library: library, list: list)
+                            Spacer()
+                            Button("更新") { library.refreshOnlineChannels(listID: list.id) }
+                                .disabled(!library.updatingSourceIDs.isEmpty)
+                            if list.hasRemovals {
+                                Button("恢复已移除内容") { library.refreshOnlineChannels(listID: list.id, restoreRemoved: true) }
+                                    .disabled(!library.updatingSourceIDs.isEmpty)
+                                    .help("重新下载此来源，恢复之前移除的频道、分组和线路")
+                            }
+                        }
+                    }
                 }
                 HStack(spacing: 6) {
                     Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
@@ -149,6 +170,24 @@ struct ChannelListDetail: View {
         }
         .padding(20)
         .background(Color.sofaBackground)
+    }
+}
+
+private struct ChannelSourceStatus: View {
+    @ObservedObject var library: Library
+    let list: ChannelList
+    var body: some View {
+        Group {
+            if library.updatingSourceIDs.contains(list.id) {
+                Text("正在更新…")
+            } else if let error = library.sourceUpdateErrors[list.id] {
+                Text(list.lastCheckedAt == nil && list.channels.isEmpty ? "获取未成功，请重试" : "更新未成功，已保留原有频道")
+                    .help(error)
+            } else if let date = list.lastCheckedAt {
+                Text("上次检查 \(date.formatted(date: .abbreviated, time: .shortened))")
+            } else { Text("等待在线更新") }
+        }
+        .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
     }
 }
 
