@@ -158,6 +158,15 @@ struct ResolvedWebMedia: Sendable {
             }
         }
     }
+    /// Sample only the video currently supplying the visible web playback.
+    func playbackPosition() async -> Double? {
+        guard active else { return nil }
+        let token = generation
+        let value = try? await webView.evaluateJavaScript("(() => { const v=window.__sofatvSelectedVideo; return v && !v.paused && !v.ended && Number.isFinite(v.currentTime) ? v.currentTime : null; })()")
+        guard active, generation == token else { return nil }
+        return (value as? NSNumber)?.doubleValue
+    }
+
     /// After native takeover, keep the page/session but stop duplicate video decoding.
     func suspendVideoForNative() {
         let token = generation

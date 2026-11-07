@@ -23,7 +23,7 @@ struct ChannelRow: View, Equatable {
                 HStack(spacing: 12 * contentScale) {
                     ChannelLogoView(channelName: channel.name, isSelected: isSelected, contentScale: contentScale)
                     VStack(alignment: .leading, spacing: 4 * contentScale) {
-                        Text(channel.name).font(.system(size: 15 * contentScale, weight: .medium)).lineLimit(1)
+                        Text(channel.displayName).font(.system(size: 15 * contentScale, weight: .medium)).lineLimit(1)
                         if let currentProgram {
                             Text(currentProgram)
                                 .font(.system(size: 11 * contentScale)).foregroundStyle(.secondary)
@@ -43,7 +43,7 @@ struct ChannelRow: View, Equatable {
                 .transaction { transaction in
                     transaction.animation = nil; transaction.disablesAnimations = true
                 }
-                .accessibilityLabel(isFavorite ? "取消收藏\(channel.name)" : "收藏\(channel.name)")
+                .accessibilityLabel(isFavorite ? "取消收藏\(channel.displayName)" : "收藏\(channel.displayName)")
         }
         .padding(.horizontal, 12 * contentScale)
         .padding(.vertical, 6 * contentScale)

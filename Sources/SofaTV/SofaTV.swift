@@ -6,15 +6,51 @@ import WebKit
     @Published var channels: [Channel] = []
     @Published private(set) var channelLists: [ChannelList] = []
     @Published var favorites: Set<String> = []
+    @Published private(set) var personalization = ChannelPersonalization()
     @Published var selected: Channel?
+    var onStopPlayback: ((Bool) -> Void)?
     @Published var loading = false
     @Published private(set) var updatingSourceIDs: Set<String> = []
     @Published private(set) var sourceUpdateErrors: [String: String] = [:]
     private var startedSourceUpdates = false
     private var sourceUpdateTask: Task<Void, Never>?
+    private var sourceUpdateID = UUID()
     private let defaults: UserDefaults
     private let channelRepository: OnlineChannelRepository
     private let warmsChannels: Bool
+    private let providedRecoveryMonitor: PlaybackRecoveryMonitor?
+    private lazy var recovery: PlaybackRecoveryMonitor = {
+        let monitor = providedRecoveryMonitor ?? PlaybackRecoveryMonitor()
+        monitor.samplePosition = { [weak self] in
+            guard let self, self.selected != nil, self.videoVisible else { return nil }
+            if self.webVideo { return await self.resolver.playbackPosition() }
+            let position = self.player.currentTime().seconds
+            return position.isFinite ? position : nil
+        }
+        monitor.onRestart = { [weak self] index, reason in
+            guard let self, let channel = self.selected, channel.sources.indices.contains(index) else { return }
+            let refreshed = self.catalogSelectedChannel ?? channel
+            if refreshed.sources != channel.sources {
+                let refreshedIndex = refreshed.sources.firstIndex(of: channel.sources[index]) ?? 0
+                self.selected = refreshed
+                self.recovery.begin(sourceCount: refreshed.sources.count, index: refreshedIndex)
+                self.start(refreshed, index: refreshedIndex)
+            } else { self.start(channel, index: index) }
+            self.recordNative("自动恢复 · 线路 \(self.sourceIndex + 1) · " + reason)
+        }
+        monitor.onStatus = { [weak self] status in
+            self?.playbackStatus = status
+            self?.recordNative(status)
+        }
+        monitor.onExhausted = { [weak self] message in
+            guard let self else { return }
+            self.clearPlaybackEngines()
+            self.warmup.cancel()
+            self.playbackStatus = message
+            self.recordNative("自动恢复已暂停，等待手动重试或网络恢复")
+        }
+        return monitor
+    }()
     @Published var sourceIndex = 0
     @Published var webChannel: URL?
     @Published var playbackStatus = "就绪"
@@ -61,7 +97,6 @@ import WebKit
     private var observation: NSKeyValueObservation?
     private var playbackObservers: [NSObjectProtocol] = []
     private var timeout: Task<Void, Never>?
-    private var attempted = Set<Int>()
     func applySettings() {
         player.currentItem?.preferredPeakBitRate = quality == 1 ? 3_000_000 : quality == 2 ? 800_000 : 0
         player.currentItem?.preferredForwardBufferDuration = mode == 2 ? 1 : mode == 1 ? 5 : 15
@@ -70,12 +105,19 @@ import WebKit
     func changeSource(_ index: Int) {
         guard let channel = selected, channel.sources.indices.contains(index) else { return }
         defaults.set(channel.sources[index].absoluteString, forKey: "line-" + preferenceID(for: channel))
-        attempted = []; allowReducedH5e = false; deferredH5eIndex = nil; start(channel, index: index)
+        personalization.lines[channel.preferenceKey] = channel.sources[index].absoluteString
+        persistPersonalization()
+        recovery.begin(sourceCount: channel.sources.count, index: index)
+        allowReducedH5e = false; deferredH5eIndex = nil; start(channel, index: index)
     }
     func reloadCurrentChannel() {
-        guard let channel = selected, channel.sources.indices.contains(sourceIndex) else { return }
-        attempted = []; allowReducedH5e = false; deferredH5eIndex = nil
-        start(channel, index: sourceIndex)
+        guard let previous = selected, previous.sources.indices.contains(sourceIndex) else { return }
+        let channel = channels.first(where: { $0.identity == previous.identity }) ?? previous
+        let index = channel.sources.firstIndex(of: previous.sources[sourceIndex]) ?? 0
+        selected = channel
+        recovery.begin(sourceCount: channel.sources.count, index: index)
+        allowReducedH5e = false; deferredH5eIndex = nil
+        start(channel, index: index)
     }
     func nextChannel(_ offset: Int) {
         guard !channels.isEmpty else { return }
@@ -109,11 +151,14 @@ import WebKit
         defaults.set(next.volumeBeforeMute, forKey: "playback-volume-before-mute")
         if rememberChannel, next.volume > 0, let selected {
             defaults.set(next.volume, forKey: "volume-" + preferenceID(for: selected))
+            personalization.volumes[selected.preferenceKey] = next.volume
+            persistPersonalization()
         }
     }
     private func restoreVolume(for channel: Channel) {
         let key = "volume-" + channel.id
-        let level = defaults.object(forKey: key) == nil ? 0.3 : defaults.float(forKey: key)
+        let level = personalization.volumes[channel.preferenceKey]
+            ?? (defaults.object(forKey: key) == nil ? 0.3 : defaults.float(forKey: key))
         var next = playbackVolume
         next.restoreChannelVolume(level)
         applyVolume(next, rememberChannel: false)
@@ -126,16 +171,12 @@ import WebKit
         if let fallback = deferredH5eIndex {
             allowReducedH5e = true; start(channel, index: fallback); return
         }
-        if let next = channel.sources.indices.first(where: { !attempted.contains($0) }) { start(channel, index: next) }
-        else {
-            sleepPrevention.setPlaying(false)
-            videoVisible = false; webVideo = false
-            DockIconController.shared.reset()
-            playbackStatus = "播放失败"; showError(message)
-        }
+        recordNative("播放异常：" + message)
+        recovery.failed(message)
     }
     private func start(_ channel: Channel, index: Int) {
-        timeout?.cancel(); observation = nil; resolver.cancel(); session = UUID(); cmgLoader?.cancel(); cmgLoader = nil; videoVisible = false; webVideo = false; resolving = false; sourceIndex = index; attempted.insert(index)
+        recovery.started(index: index)
+        timeout?.cancel(); observation = nil; resolver.cancel(); session = UUID(); cmgLoader?.cancel(); cmgLoader = nil; videoVisible = false; webVideo = false; resolving = false; sourceIndex = index
         DockIconController.shared.reset()
         latestWebMedia = nil; deferredH5eIndex = nil
         race.begin(); diagnostics = []; playbackMetrics = "尚无播放统计"; recordNative("等待媒体地址和解密会话")
@@ -154,7 +195,6 @@ import WebKit
             // Previously this webpage was only attempted after a 20-second native timeout.
             if !allowReducedH5e, let web = channel.sources.enumerated().first(where: { $0.element.scheme == "webview" }),
                let page = webpageURL(web.element) {
-                attempted.insert(web.offset)
                 startWeb(page, channel: channel, index: index)
             }
             playbackStatus = "原生视频解密中..."
@@ -255,6 +295,7 @@ import WebKit
                         // already loading a fresh session; let its latest
                         // result replace the failed cache immediately.
                         if self.resolving, let media = self.latestWebMedia {
+                            self.latestWebMedia = nil
                             self.playMedia(media.url, cookies: media.cookies, cmgState: media.cmgState, channel: channel, index: index)
                         } else if !self.resolving {
                             self.failed(channel, index: index, message: error.localizedDescription)
@@ -287,12 +328,9 @@ import WebKit
                 Task { @MainActor [weak self] in
                     guard let self, self.session == token, self.player.currentItem === item else { return }
                     if eventName == .AVPlayerItemDidPlayToEndTime {
-                        self.sleepPrevention.setPlaying(false)
-                        self.videoVisible = false; self.webVideo = false
-                        DockIconController.shared.reset()
-                        self.playbackStatus = "播放已结束"
+                        if !self.webVideo { self.failed(channel, index: index, message: "直播流已结束") }
                     } else if eventName == .AVPlayerItemFailedToPlayToEndTime {
-                        self.failed(channel, index: index, message: endFailureMessage ?? "播放意外中断")
+                        if !self.webVideo { self.failed(channel, index: index, message: endFailureMessage ?? "播放意外中断") }
                     } else if eventName == .AVPlayerItemNewErrorLogEntry, let event = item.errorLog()?.events.last {
                         self.recordNative("播放器错误：\(event.errorDomain) / \(event.errorStatusCode)")
                     } else if eventName == .AVPlayerItemPlaybackStalled { self.recordNative("播放器发生缓冲停顿") }
@@ -324,7 +362,7 @@ import WebKit
         if resolving { return }
         timeout = Task { [weak self] in
             try? await Task.sleep(for: .seconds(20))
-            guard !Task.isCancelled, let self else { return }
+            guard !Task.isCancelled, let self, self.session == token else { return }
             self.failed(channel, index: index, message: "连接超时，请检查网络或切换线路")
         }
     }
@@ -336,6 +374,8 @@ import WebKit
             if ready, self.race.webReady(raceToken) {
                 self.sleepPrevention.setPlaying(true)
                 self.webVideo = true; self.videoVisible = true
+                self.recovery.ready()
+                self.configureWarmup()
                 if let selected = self.selected { DockIconController.shared.show(channelName: selected.name) }
                 self.player.isMuted = true
                 self.resolver.setAudible(true, volume: self.volume)
@@ -353,6 +393,8 @@ import WebKit
         let size = item.presentationSize
         recordNative(size.width > 0 && size.height > 0 ? "原生首帧已显示 · \(Int(size.width))×\(Int(size.height))" : "原生首帧已显示")
         timeout?.cancel(); resolving = false
+        recovery.ready()
+        configureWarmup()
         if let selected { DockIconController.shared.show(channelName: selected.name) }
         // Mute the web channel before enabling native audio, including queued script calls.
         resolver.setAudible(false) { [weak self] in
@@ -362,8 +404,10 @@ import WebKit
             self.playbackStatus = "原生视频播放中"
         }
     }
-    init(defaults: UserDefaults = .standard, channelRepository: OnlineChannelRepository = .shared, warmsChannels: Bool = true) {
+    init(defaults: UserDefaults = .standard, channelRepository: OnlineChannelRepository = .shared, warmsChannels: Bool = true,
+         recoveryMonitor: PlaybackRecoveryMonitor? = nil) {
         self.defaults = defaults; self.channelRepository = channelRepository; self.warmsChannels = warmsChannels
+        providedRecoveryMonitor = recoveryMonitor
         quality = defaults.integer(forKey: "quality"); mode = defaults.integer(forKey: "mode")
         stretch = defaults.bool(forKey: "stretch")
         playbackVolume = PlaybackVolume(isMuted: defaults.bool(forKey: "playback-muted"),
@@ -377,6 +421,22 @@ import WebKit
         favorites = Set(defaults.stringArray(forKey: "favorites") ?? [])
         channelLists = OnlineChannelSource.migrate(channelLists)
         channels = ChannelCatalog.merge(channelLists)
+        if let data = defaults.data(forKey: "channel-personalization-v1"),
+           let saved = try? JSONDecoder().decode(ChannelPersonalization.self, from: data) {
+            personalization = saved
+        } else {
+            personalization.favoriteKeys = Set(channels.filter { favorites.contains($0.id) }.map(\.preferenceKey))
+        }
+        for channel in channels {
+            if personalization.volumes[channel.preferenceKey] == nil,
+               let volume = defaults.object(forKey: "volume-" + channel.id) as? NSNumber {
+                personalization.volumes[channel.preferenceKey] = volume.floatValue
+            }
+            if personalization.lines[channel.preferenceKey] == nil,
+               let line = defaults.string(forKey: "line-" + channel.id) { personalization.lines[channel.preferenceKey] = line }
+        }
+        channels = personalization.applying(to: channels)
+        favorites = Set(channels.filter { personalization.favoriteKeys.contains($0.preferenceKey) }.map(\.id))
         persistLibrary()
         configureWarmup()
     }
@@ -390,13 +450,15 @@ import WebKit
         let lists = channelLists.filter { $0.remoteURL != nil && (listID == nil || $0.id == listID) }
         guard !lists.isEmpty else { return }
         updatingSourceIDs = Set(lists.map(\.id))
+        sourceUpdateID = UUID()
+        let updateID = sourceUpdateID
         for list in lists { sourceUpdateErrors.removeValue(forKey: list.id) }
         sourceUpdateTask = Task { [weak self] in
-            await self?.performOnlineRefresh(lists, restoreRemoved: restoreRemoved)
+            await self?.performOnlineRefresh(lists, restoreRemoved: restoreRemoved, updateID: updateID)
         }
     }
-    private func performOnlineRefresh(_ lists: [ChannelList], restoreRemoved: Bool) async {
-        defer { updatingSourceIDs = []; sourceUpdateTask = nil }
+    private func performOnlineRefresh(_ lists: [ChannelList], restoreRemoved: Bool, updateID: UUID) async {
+        defer { if sourceUpdateID == updateID { updatingSourceIDs = []; sourceUpdateTask = nil } }
         await withTaskGroup(of: (ChannelList, Result<OnlineChannelUpdate, Error>).self) { group in
             for list in lists {
                 group.addTask { [repository = channelRepository] in
@@ -405,6 +467,7 @@ import WebKit
                 }
             }
             for await (requested, result) in group {
+                guard !Task.isCancelled, sourceUpdateID == updateID else { continue }
                 // Do not recreate sources removed while their downloads were running.
                 guard let index = channelLists.firstIndex(where: { $0.id == requested.id && $0.remoteURL == requested.remoteURL }) else { continue }
                 switch result {
@@ -422,7 +485,7 @@ import WebKit
     }
     func play(_ channel: Channel) {
         timeout?.cancel(); observation = nil; resolver.cancel(); session = UUID(); webChannel = nil
-        selected = channel; restoreVolume(for: channel); attempted = []; allowReducedH5e = false; deferredH5eIndex = nil
+        selected = channel; restoreVolume(for: channel); allowReducedH5e = false; deferredH5eIndex = nil
         guard !channel.sources.isEmpty else {
             sleepPrevention.setPlaying(false)
             DockIconController.shared.reset()
@@ -431,20 +494,102 @@ import WebKit
             showError("这个频道没有可用线路。")
             return
         }
-        let saved = defaults.string(forKey: "line-" + channel.id)
+        personalization.record(channel)
+        persistPersonalization()
+        let saved = personalization.lines[channel.preferenceKey] ?? defaults.string(forKey: "line-" + channel.id)
         let index = channel.sources.firstIndex(where: { $0.absoluteString == saved }) ?? channel.sources.firstIndex(where: { $0.scheme != "webview" }) ?? 0
+        recovery.begin(sourceCount: channel.sources.count, index: index)
         start(channel, index: index)
         configureWarmup()
     }
+    var catalogSelectedChannel: Channel? {
+        guard let selected else { return nil }
+        return channels.first { $0.identity == selected.identity || $0.preferenceKey == selected.preferenceKey } ?? selected
+    }
+    var orderedGroups: [String] { personalization.groups(in: channels) }
+    var recentChannels: [Channel] {
+        let byKey = Dictionary(channels.map { ($0.preferenceKey, $0) }, uniquingKeysWith: { first, _ in first })
+        return personalization.recent.compactMap { byKey[$0] }
+    }
+    var previousChannel: Channel? {
+        let currentKey = selected?.preferenceKey ?? personalization.recent.first
+        return recentChannels.first { $0.preferenceKey != currentKey }
+    }
+    func customizeChannel(_ channel: Channel, name: String, group: String) {
+        personalization.customize(channel, name: name, group: group)
+        rebuildChannels(preservingPlayback: true)
+    }
+    func moveChannels(from offsets: IndexSet, to destination: Int) {
+        var reordered = channels
+        reordered.move(fromOffsets: offsets, toOffset: destination)
+        var seen: Set<String> = []
+        personalization.order = reordered.map(\.preferenceKey).filter { seen.insert($0).inserted }
+        rebuildChannels(preservingPlayback: true)
+    }
+    func moveChannel(_ channel: Channel, by offset: Int) {
+        guard let index = channels.firstIndex(where: { $0.identity == channel.identity }),
+              channels.indices.contains(index + offset) else { return }
+        moveChannels(from: IndexSet(integer: index), to: offset > 0 ? index + offset + 1 : index + offset)
+    }
+    func moveGroup(_ group: String, by offset: Int) {
+        var groups = orderedGroups
+        guard let index = groups.firstIndex(of: group), groups.indices.contains(index + offset) else { return }
+        groups.swapAt(index, index + offset)
+        personalization.groupOrder = groups
+        persistPersonalization()
+    }
+    func moveGroups(from offsets: IndexSet, to destination: Int) {
+        var groups = orderedGroups
+        groups.move(fromOffsets: offsets, toOffset: destination)
+        personalization.groupOrder = groups
+        persistPersonalization()
+    }
+    func renameGroup(_ group: String, to name: String) {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name != group else { return }
+        for channel in channels where channel.displayGroup == group {
+            personalization.customize(channel, name: channel.displayName, group: name)
+        }
+        personalization.groupOrder = orderedGroups.map { $0 == group ? name : $0 }
+        rebuildChannels(preservingPlayback: true)
+    }
+    func resetChannelOrder() {
+        personalization.order = []; personalization.groupOrder = []
+        rebuildChannels(preservingPlayback: true)
+    }
+    func configurationBackupData() throws -> Data {
+        var preferences = personalization
+        for channel in channels {
+            if preferences.volumes[channel.preferenceKey] == nil { preferences.volumes[channel.preferenceKey] = 0.3 }
+            if preferences.lines[channel.preferenceKey] == nil { preferences.lines[channel.preferenceKey] = "" }
+        }
+        let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return try encoder.encode(ChannelConfigurationBackup(sources: channelLists, personalization: preferences))
+    }
+    func restoreConfiguration(_ data: Data) throws {
+        let backup = try ChannelConfigurationBackup.decode(data)
+        stopPlayback()
+        sourceUpdateTask?.cancel(); sourceUpdateID = UUID(); sourceUpdateTask = nil
+        updatingSourceIDs = []; sourceUpdateErrors = [:]
+        channelLists = OnlineChannelSource.migrate(backup.sources); personalization = backup.personalization
+        rebuildChannels(preservingPlayback: true)
+    }
     func favorite(_ channel: Channel) {
-        if favorites.contains(channel.id) { favorites.remove(channel.id) } else { favorites.insert(channel.id) }
+        if personalization.favoriteKeys.contains(channel.preferenceKey) { personalization.favoriteKeys.remove(channel.preferenceKey) }
+        else { personalization.favoriteKeys.insert(channel.preferenceKey) }
+        favorites = Set(channels.filter { personalization.favoriteKeys.contains($0.preferenceKey) }.map(\.id))
         defaults.set(Array(favorites), forKey: "favorites")
+        persistPersonalization()
         configureWarmup()
+    }
+    private func persistPersonalization() {
+        if let data = try? JSONEncoder().encode(personalization) { defaults.set(data, forKey: "channel-personalization-v1") }
     }
     private func persistLibrary() {
         if let data = try? JSONEncoder().encode(channelLists) { defaults.set(data, forKey: "channel-lists") }
         if let data = try? JSONEncoder().encode(channels) { defaults.set(data, forKey: "channels") }
         defaults.set(Array(favorites), forKey: "favorites")
+        persistPersonalization()
     }
     private func migratePreferences(from oldID: String, to newID: String) {
         guard oldID != newID else { return }
@@ -453,34 +598,52 @@ import WebKit
         defaults.removeObject(forKey: "volume-" + oldID)
         defaults.removeObject(forKey: "line-" + oldID)
     }
-    func stopPlayback() {
+    func stopPlayback(restoreWindow: Bool = true) {
+        recovery.stop()
+        onStopPlayback?(restoreWindow)
+        clearPlaybackEngines()
+        warmup.cancel()
+        selected = nil; sourceIndex = 0; playbackStatus = "就绪"
+    }
+    private func clearPlaybackEngines() {
+        session = UUID(); race.begin(); latestWebMedia = nil; deferredH5eIndex = nil
         sleepPrevention.setPlaying(false)
         timeout?.cancel(); observation = nil; resolver.cancel(); cmgLoader?.cancel(); cmgLoader = nil
         for observer in playbackObservers { NotificationCenter.default.removeObserver(observer) }
         playbackObservers = []
-        player.pause(); player.replaceCurrentItem(with: nil); selected = nil; sourceIndex = 0
+        player.pause(); player.replaceCurrentItem(with: nil)
         DockIconController.shared.reset()
-        videoVisible = false; webVideo = false; resolving = false; playbackStatus = "就绪"
+        videoVisible = false; webVideo = false; resolving = false
     }
     private func rebuildChannels(preservingPlayback: Bool = false) {
         let previousChannels = channels
         let previousSelected = selected
         let previousSource = previousSelected.flatMap { channel in channel.sources.indices.contains(sourceIndex) ? channel.sources[sourceIndex] : nil }
-        let selectedWasManaged = previousSelected.map { selected in previousChannels.contains { $0.id == selected.id && $0.name == selected.name && $0.group == selected.group } } ?? false
-        channels = ChannelCatalog.merge(channelLists)
-        let refreshedByIdentity = Dictionary(uniqueKeysWithValues: channels.map { ($0.identity, $0) })
+        let selectedWasManaged = previousSelected.map { selected in previousChannels.contains { $0.preferenceKey == selected.preferenceKey } } ?? false
+        let imported = ChannelCatalog.merge(channelLists)
+        let refreshedByIdentity = Dictionary(uniqueKeysWithValues: imported.map { ($0.identity, $0) })
+        let refreshedByKey = Dictionary(imported.map { ($0.preferenceKey, $0) }, uniquingKeysWith: { first, _ in first })
         for old in previousChannels {
-            guard let refreshed = refreshedByIdentity[old.identity], old.id != refreshed.id else { continue }
-            migratePreferences(from: old.id, to: refreshed.id)
-            if favorites.remove(old.id) != nil { favorites.insert(refreshed.id) }
+            guard let refreshed = refreshedByIdentity[old.identity] ?? refreshedByKey[old.preferenceKey] else { continue }
+            personalization.migrateKey(from: old.preferenceKey, to: refreshed.preferenceKey)
+            if old.id != refreshed.id { migratePreferences(from: old.id, to: refreshed.id) }
         }
-        favorites.formIntersection(Set(channels.map(\.id)))
+        channels = personalization.applying(to: imported)
+        favorites = Set(channels.filter { personalization.favoriteKeys.contains($0.preferenceKey) }.map(\.id))
         configureWarmup()
         // Playback callbacks capture this channel and source index. Keep that
         // snapshot even when an online update removes or reorders its sources.
-        if preservingPlayback { persistLibrary(); return }
+        if preservingPlayback {
+            if var playing = selected,
+               let display = channels.first(where: { $0.identity == playing.identity || $0.preferenceKey == playing.preferenceKey }) {
+                playing.name = display.name; playing.group = display.group; playing.epgID = display.epgID
+                playing.customName = display.customName; playing.customGroup = display.customGroup
+                selected = playing
+            }
+            persistLibrary(); return
+        }
         guard selectedWasManaged, let previousSelected else { persistLibrary(); return }
-        if let refreshed = refreshedByIdentity[previousSelected.identity] {
+        if let refreshed = channels.first(where: { $0.identity == previousSelected.identity || $0.preferenceKey == previousSelected.preferenceKey }) {
             self.selected = refreshed
             if let previousSource, let index = refreshed.sources.firstIndex(of: previousSource) { sourceIndex = index }
             else { play(refreshed) }
@@ -505,7 +668,10 @@ import WebKit
         channelLists = ChannelCatalog.deletingSource(source, from: channel, in: channelLists, inList: listID); rebuildChannels()
     }
     func deleteGroup(_ group: String) {
-        channelLists = ChannelCatalog.deletingGroup(group, from: channelLists); rebuildChannels()
+        for channel in channels where channel.displayGroup == group {
+            channelLists = ChannelCatalog.deletingChannel(channel, from: channelLists)
+        }
+        rebuildChannels()
     }
     func deleteList(_ list: ChannelList) {
         channelLists.removeAll { $0.id == list.id }; sourceUpdateErrors.removeValue(forKey: list.id); rebuildChannels()
@@ -632,11 +798,11 @@ struct ContentView: View {
         var channelCount = 0
         for channel in library.channels {
             guard (!ui.favoritesOnly || library.favorites.contains(channel.id)),
-                  (ui.search.isEmpty || channel.name.localizedCaseInsensitiveContains(ui.search) || channel.group.localizedCaseInsensitiveContains(ui.search)) else { continue }
+                  channel.matches(ui.search) else { continue }
             channelCount += 1
-            channelsByGroup[channel.group, default: []].append(channel)
+            channelsByGroup[channel.displayGroup, default: []].append(channel)
         }
-        let sections = channelsByGroup.keys.sorted().map { SidebarSection(name: $0, channels: channelsByGroup[$0] ?? []) }
+        let sections = library.orderedGroups.filter { channelsByGroup[$0] != nil }.map { SidebarSection(name: $0, channels: channelsByGroup[$0] ?? []) }
         let pinnedGroups = sections.map { section in
             ChannelListGroup(name: section.name, visibleChannelCount: ui.collapsedGroups.contains(section.name) ? 0 : section.channels.count)
         }
@@ -774,7 +940,7 @@ struct ContentView: View {
                 .background(Color.sofaBackground)
                 .overlay(alignment: .leading) {
                     ProgramGuideOverlay(preview: guidePreview, store: programGuide, presentation: .embedded,
-                                        playingChannel: library.selected)
+                                        playingChannel: library.catalogSelectedChannel)
                         .frame(width: 260)
                 }
             }
@@ -788,7 +954,7 @@ struct ContentView: View {
                 .accessibilityHidden(true)
         }
         .ignoresSafeArea(.container, edges: .top)
-        .background(MainWindowChrome(title: library.selected?.name ?? "沙发电视", onClose: library.stopPlayback).frame(width: 0, height: 0))
+        .background(MainWindowChrome(title: library.selected?.displayName ?? "沙发电视", onClose: { library.stopPlayback(restoreWindow: false) }).frame(width: 0, height: 0))
         .focusedSceneValue(\.channelLibrary, library)
         .onAppear {
             programGuide.setChannels(library.channels)

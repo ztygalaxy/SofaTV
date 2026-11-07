@@ -14,6 +14,18 @@ struct Channel: Identifiable, Codable, Hashable, Sendable {
     var group: String
     var url: URL
     var epgID: String? = nil
+    // Display overrides never change the source identity used by EPG and imports.
+    var customName: String? = nil
+    var customGroup: String? = nil
+    var displayName: String { customName ?? name }
+    var displayGroup: String { customGroup ?? group }
+    var preferenceKey: String {
+        if let id = epgID?.trimmingCharacters(in: .whitespacesAndNewlines), !id.isEmpty { return "epg:" + id }
+        return "name:\(group.utf8.count):\(group)\(name.utf8.count):\(name)"
+    }
+    func matches(_ query: String) -> Bool {
+        query.isEmpty || [name, group, displayName, displayGroup].contains { $0.localizedCaseInsensitiveContains(query) }
+    }
 
     func removing(_ source: URL) -> Channel? {
         let remaining = sources.filter { $0 != source }

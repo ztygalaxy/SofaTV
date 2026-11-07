@@ -52,6 +52,9 @@ struct VideoStage: NSViewRepresentable {
             }
             stage.onToggleFullscreen = { [weak self] in self?.toggleFullscreen() }
             stage.onToggleMiniPlayer = { [weak self] in self?.toggleMini() }
+            library.onStopPlayback = { [weak self] activateMain in
+                self?.restoreEmbedded(animated: false, activateMain: activateMain)
+            }
             onEscape = { [weak self] in self?.stage.dismissFullscreenBrowsers() ?? false }
             stage.pointer.onDoubleClick = { [weak self] in
                 guard let self else { return }
@@ -183,6 +186,7 @@ struct VideoStage: NSViewRepresentable {
         private let volumeBackdrop = EdgeFade()
         private let topBackdrop = EdgeFade(top: true)
         private let miniPlayerButton = VideoVolumeControl.SymbolButton()
+        let powerButton = VideoVolumeControl.SymbolButton()
         private var volumeScroll = VideoVolumeScroll()
         private var lastDisplayedVolume: Float?
         private var lastDisplayedMute: Bool?
@@ -196,6 +200,7 @@ struct VideoStage: NSViewRepresentable {
         private var trackingSidebarButton = false
         private var trackingVolume = false
         private var trackingMiniPlayerButton = false
+        private var trackingPowerButton = false
         private var sidebarControlAvailable = false
         private var volumeControlAvailable = false
         private var fullscreenDrawerVisible = false
@@ -207,7 +212,7 @@ struct VideoStage: NSViewRepresentable {
         private weak var guidePreview: ProgramGuidePreview?
         private var guideHost: ProgramGuideOverlayHost?
         private var guideUpdates = Set<AnyCancellable>()
-        private var trackingControls: Bool { trackingSidebarButton || trackingVolume || trackingMiniPlayerButton }
+        private var trackingControls: Bool { trackingSidebarButton || trackingVolume || trackingMiniPlayerButton || trackingPowerButton }
         var onToggleFullscreen: (() -> Void)?
         var onToggleMiniPlayer: (() -> Void)?
         var isMiniPlayer = false {
@@ -257,6 +262,10 @@ struct VideoStage: NSViewRepresentable {
             volumeControl.isHidden = true; addSubview(volumeControl)
             miniPlayerButton.target = self; miniPlayerButton.action = #selector(toggleMiniPlayer)
             miniPlayerButton.isHidden = true; addSubview(miniPlayerButton)
+            powerButton.target = self; powerButton.action = #selector(stopPlayback)
+            powerButton.toolTip = "停止播放"; powerButton.setAccessibilityLabel("停止播放")
+            powerButton.setSymbol("power")
+            powerButton.isHidden = true; addSubview(powerButton)
             configureMiniPlayerButton()
             pointer.onPointerActivity = { [weak self] in self?.showOverlayControls() }
             pointer.onPointerMoved = { [weak self] event in self?.updateFullscreenDrawer(for: event) }
@@ -304,6 +313,14 @@ struct VideoStage: NSViewRepresentable {
                 self.pointer.lastSidebarToggleTime = ProcessInfo.processInfo.systemUptime
                 self.controlsTrackingChanged()
             }
+            powerButton.onPointerActivity = { [weak self] in self?.showOverlayControls() }
+            powerButton.onScroll = { [weak self] event in self?.adjustVolume(with: event) }
+            powerButton.onTrackingChanged = { [weak self] tracking in
+                guard let self else { return }
+                self.trackingPowerButton = tracking
+                self.pointer.lastSidebarToggleTime = ProcessInfo.processInfo.systemUptime
+                self.controlsTrackingChanged()
+            }
             updateBackground()
             observation = playerView.observe(\.isReadyForDisplay, options: [.new]) { [weak self] view, _ in
                 Task { @MainActor [weak self, weak view] in
@@ -323,12 +340,13 @@ struct VideoStage: NSViewRepresentable {
             let title = isMiniPlayer ? "返回主窗口" : "置顶迷你窗口"
             miniPlayerButton.toolTip = title
             miniPlayerButton.setAccessibilityLabel(title)
-            miniPlayerButton.setSymbol(isMiniPlayer ? "pin.slash" : "pin", rotation: -45)
+            miniPlayerButton.setSymbol(isMiniPlayer ? "pin.slash.fill" : "pin.fill", rotation: -45)
         }
         @objc private func toggleMiniPlayer() {
             pointer.lastSidebarToggleTime = ProcessInfo.processInfo.systemUptime
             onToggleMiniPlayer?()
         }
+        @objc private func stopPlayback() { library?.stopPlayback() }
         func configureSidebar(collapsed: Bool, toggle: @escaping (Bool) -> Void) {
             sidebarCollapsed = collapsed; onToggleSidebar = toggle
             sidebarButton.setCollapsed(collapsed)
@@ -336,13 +354,13 @@ struct VideoStage: NSViewRepresentable {
             updateGuidePresentation()
         }
         func configureFullscreenChannelPicker(library: Library, ui: UIState, programGuide: ProgramGuideStore, preview: ProgramGuidePreview) {
-            guideHost?.playingChannel = library.selected
+            guideHost?.playingChannel = library.catalogSelectedChannel
             guard !fullscreenPickerConfigured else { return }
             fullscreenPickerConfigured = true
             guidePreview = preview
             fullscreenDrawer.setContent(AnyView(FullscreenChannelPicker(library: library, ui: ui, programGuide: programGuide, guidePreview: preview)))
             let guide = ProgramGuideOverlayHost(preview: preview, store: programGuide, presentation: .fullscreen,
-                                                playingChannel: library.selected)
+                                                playingChannel: library.catalogSelectedChannel)
             guideHost = guide
             addSubview(guide, positioned: .above, relativeTo: fullscreenDrawer)
             preview.$channel.receive(on: DispatchQueue.main).sink { [weak self] _ in
@@ -372,6 +390,7 @@ struct VideoStage: NSViewRepresentable {
             updateControlAvailability()
             if window == nil {
                 miniPlayerButton.cancelTracking()
+                powerButton.cancelTracking()
                 volumeScroll.reset(); hideOverlayControls(); setFullscreenDrawerVisible(false, animated: false)
             }
         }
@@ -520,6 +539,7 @@ struct VideoStage: NSViewRepresentable {
         private func setPlayerControlsVisible(_ visible: Bool) {
             volumeControl.isHidden = !visible; volumeBackdrop.isHidden = !visible
             miniPlayerButton.isHidden = !visible; topBackdrop.isHidden = !visible
+            powerButton.isHidden = !visible
         }
         @objc private func hideOverlayControls() {
             controlsHideTimer?.invalidate(); controlsHideTimer = nil
@@ -594,6 +614,8 @@ struct VideoStage: NSViewRepresentable {
             volumeBackdrop.frame = NSRect(x: bounds.minX, y: bounds.minY, width: bounds.width, height: fadeHeight)
             topBackdrop.frame = NSRect(x: bounds.minX, y: bounds.maxY - fadeHeight, width: bounds.width, height: fadeHeight)
             miniPlayerButton.frame = NSRect(x: bounds.maxX - cornerCenterInset - buttonSide / 2, y: bounds.maxY - cornerCenterInset - buttonSide / 2, width: buttonSide, height: buttonSide)
+            powerButton.frame = NSRect(x: miniPlayerButton.frame.minX - buttonSide - 4, y: miniPlayerButton.frame.minY,
+                                       width: buttonSide, height: buttonSide)
             let volumeSize = volumeControl.intrinsicContentSize
             volumeControl.frame = NSRect(x: max(8, bounds.maxX - volumeSize.width - controlInset), y: bounds.minY + cornerCenterInset - volumeSize.height / 2, width: min(volumeSize.width, max(0, bounds.width - controlInset)), height: volumeSize.height)
             sidebarButton.frame = NSRect(x: 0, y: bounds.midY - 28, width: 28, height: 56)
@@ -627,11 +649,11 @@ private struct FullscreenChannelPicker: View {
         var channelCount = 0
         for channel in library.channels {
             guard (!ui.favoritesOnly || library.favorites.contains(channel.id)),
-                  (ui.search.isEmpty || channel.name.localizedCaseInsensitiveContains(ui.search) || channel.group.localizedCaseInsensitiveContains(ui.search)) else { continue }
+                  channel.matches(ui.search) else { continue }
             channelCount += 1
-            channelsByGroup[channel.group, default: []].append(channel)
+            channelsByGroup[channel.displayGroup, default: []].append(channel)
         }
-        return (channelCount, channelsByGroup.keys.sorted().map { Section(name: $0, channels: channelsByGroup[$0] ?? []) })
+        return (channelCount, library.orderedGroups.filter { channelsByGroup[$0] != nil }.map { Section(name: $0, channels: channelsByGroup[$0] ?? []) })
     }
 
     private func groupHeader(_ group: String) -> some View {

@@ -38,7 +38,7 @@ extension Library {
 
     func showListManager() {
         let id = "channel-lists-\(ObjectIdentifier(self))"
-        AppWindows.shared.show(id: id, title: "管理频道列表", size: ChannelListManager.windowSize(sourceCount: channelLists.count), titleVisible: true, content:
+        AppWindows.shared.show(id: id, title: "编辑频道来源", size: ChannelListManager.windowSize(sourceCount: channelLists.count), titleVisible: true, content:
             ChannelListManager(library: self,
                 onResize: { AppWindows.shared.resize(id: id, size: $0) },
                 onClose: { AppWindows.shared.close(id: id) })

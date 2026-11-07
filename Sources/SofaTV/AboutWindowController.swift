@@ -57,7 +57,7 @@ final class AboutWindowController: NSWindowController {
         ])
         stack.addArrangedSubview(icon)
 
-        let name = label("沙发电视", identifier: "About.name", size: 24, weight: .bold)
+        let name = label("SofaTV / 沙发电视", identifier: "About.name", size: 24, weight: .bold)
         stack.addArrangedSubview(name)
         stack.setCustomSpacing(10, after: name)
 
@@ -85,7 +85,7 @@ final class AboutWindowController: NSWindowController {
         links.addArrangedSubview(linkButton("开源许可", identifier: "About.licenses", action: #selector(showLicenses)))
         stack.addArrangedSubview(links)
 
-        let attribution = label("By ztygalaxy with love.", identifier: "About.attribution", size: 11)
+        let attribution = label("Build by ztygalaxy with his friends.", identifier: "About.attribution", size: 11)
         attribution.textColor = .secondaryLabelColor
         attribution.allowsEditingTextAttributes = true
         let credit = NSMutableAttributedString(string: attribution.stringValue, attributes: [
@@ -93,6 +93,8 @@ final class AboutWindowController: NSWindowController {
         ])
         credit.addAttributes([.link: URL(string: "https://github.com/ztygalaxy")!, .underlineStyle: 0],
                              range: (credit.string as NSString).range(of: "ztygalaxy"))
+        credit.addAttributes([.link: URL(string: "https://github.com/ztygalaxy/SofaTV/graphs/contributors")!, .underlineStyle: 0],
+                             range: (credit.string as NSString).range(of: "his friends"))
         attribution.attributedStringValue = credit
         stack.addArrangedSubview(attribution)
         stack.setCustomSpacing(18, after: links)

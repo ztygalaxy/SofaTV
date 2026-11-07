@@ -24,7 +24,8 @@ struct SofaTVCommands: Commands {
             Button("打开直播地址…") { library?.showAddressWindow(direct: true) }.keyboardShortcut("l").disabled(library == nil)
             Divider()
             if let library { ChannelSourceMenu(library: library) }
-            Button("管理频道列表…") { library?.showListManager() }.disabled(library == nil)
+            Button("整理频道分组…") { library?.showChannelOrganizer() }.disabled(library == nil)
+            Button("编辑频道来源…") { library?.showListManager() }.disabled(library == nil)
         }
         CommandMenu("播放") {
             if let library { PlaybackMenu(library: library) }
@@ -49,7 +50,12 @@ private struct PlaybackMenu: View {
     var body: some View {
         Button("上一个频道") { library.nextChannel(-1) }.keyboardShortcut(.upArrow, modifiers: []).disabled(library.channels.isEmpty)
         Button("下一个频道") { library.nextChannel(1) }.keyboardShortcut(.downArrow, modifiers: []).disabled(library.channels.isEmpty)
-        Button("重新播放") { if let channel = library.selected { library.play(channel) } }.disabled(library.selected == nil)
+        Button("重新播放") { library.reloadCurrentChannel() }.disabled(library.selected == nil)
+        Button("停止播放") { library.stopPlayback() }.disabled(library.selected == nil)
+        Button(library.previousChannel.map { "返回上一观看频道 · \($0.displayName)" } ?? "返回上一观看频道") {
+            if let previous = library.previousChannel { library.play(previous) }
+        }
+        .disabled(library.previousChannel == nil)
         Divider()
         Button("降低音量") { library.adjustVolume(-0.05) }.keyboardShortcut(.leftArrow, modifiers: []).disabled(library.selected == nil)
         Button("增大音量") { library.adjustVolume(0.05) }.keyboardShortcut(.rightArrow, modifiers: []).disabled(library.selected == nil)

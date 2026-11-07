@@ -18,7 +18,6 @@ final class VideoVolumeControl: NSView {
         static let visibleGap: CGFloat = 14
         static let speakerHitSide: CGFloat = 32
         static let speakerVisibleWidth: CGFloat = 20
-        static let readoutWidth: CGFloat = 42
         static let readoutHeight: CGFloat = 24
         static let sliderHeight: CGFloat = 32
         static let railHeight: CGFloat = 4
@@ -92,7 +91,9 @@ final class VideoVolumeControl: NSView {
         fullscreenButton.setSymbol(fullscreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
     }
     private func updateReadout(_ value: Float, muted: Bool) {
+        let previousWidth = percentage.inkWidth
         percentage.setPercentage(Int((value * 100).rounded()))
+        if percentage.inkWidth != previousWidth { needsLayout = true }
         let label = (muted || value <= 0) ? "取消静音" : "静音"
         if speaker.toolTip != label {
             speaker.toolTip = label; speaker.setAccessibilityLabel(label)
@@ -112,9 +113,10 @@ final class VideoVolumeControl: NSView {
         reload.frame = NSRect(x: fullscreenButton.frame.minX - Layout.buttonGap - Layout.speakerHitSide,
                               y: bounds.midY - Layout.speakerHitSide / 2,
                               width: Layout.speakerHitSide, height: Layout.speakerHitSide)
-        let readoutX = reload.frame.midX - Layout.speakerVisibleWidth / 2 - Layout.visibleGap - Layout.readoutWidth
+        let readoutWidth = percentage.inkWidth
+        let readoutX = reload.frame.midX - Layout.speakerVisibleWidth / 2 - Layout.visibleGap - readoutWidth
         percentage.frame = NSRect(x: readoutX, y: bounds.midY - Layout.readoutHeight / 2,
-                                  width: Layout.readoutWidth, height: Layout.readoutHeight)
+                                  width: readoutWidth, height: Layout.readoutHeight)
         slider.frame = NSRect(x: railLeft, y: bounds.midY - Layout.sliderHeight / 2,
                               width: max(0, readoutX - Layout.visibleGap - railLeft), height: Layout.sliderHeight)
     }
@@ -279,6 +281,11 @@ final class VideoVolumeControl: NSView {
     private final class PercentageReadout: NSView {
         private var text = ""
         private var line: CTLine?
+        private var inkBounds: CGRect {
+            guard let line else { return .zero }
+            return CTLineGetBoundsWithOptions(line, .useGlyphPathBounds)
+        }
+        var inkWidth: CGFloat { ceil(inkBounds.width) }
         override init(frame frameRect: NSRect) { super.init(frame: frameRect); setAccessibilityElement(false) }
         convenience init() { self.init(frame: .zero) }
         required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -297,8 +304,8 @@ final class VideoVolumeControl: NSView {
         override func draw(_ dirtyRect: NSRect) {
             guard let line, let context = NSGraphicsContext.current?.cgContext else { return }
             context.saveGState(); context.textMatrix = .identity; context.textPosition = .zero
-            let ink = CTLineGetImageBounds(line, context)
-            context.textPosition = CGPoint(x: bounds.minX - ink.minX, y: bounds.midY - ink.midY)
+            let ink = inkBounds
+            context.textPosition = CGPoint(x: bounds.maxX - ink.maxX, y: bounds.midY - ink.midY)
             CTLineDraw(line, context); context.restoreGState()
         }
     }
@@ -311,6 +318,7 @@ final class VideoVolumeControl: NSView {
         var onScroll: ((NSEvent) -> Void)?
         private var volume: Float = 0.3
         private var tracking = false
+        private var trackingWidth: CGFloat?
         private var pointerTrackingArea: NSTrackingArea?
         private var knobRadius: CGFloat { Layout.knobDiameter / 2 }
 
@@ -335,17 +343,19 @@ final class VideoVolumeControl: NSView {
         }
         private func updateVolume(with event: NSEvent) {
             let point = convert(event.locationInWindow, from: nil)
-            let trackWidth = max(1, bounds.width - 2 * knobRadius)
+            // A change in digit count can resize the rail. Keep a drag's input
+            // range fixed so crossing 9/10 or 99/100 cannot make its value jump.
+            let trackWidth = max(1, (trackingWidth ?? bounds.width) - 2 * knobRadius)
             assign(Float((point.x - knobRadius) / trackWidth), notify: true)
         }
         func cancelTracking() {
             guard tracking else { return }
-            tracking = false; onTrackingChanged?(false)
+            tracking = false; trackingWidth = nil; onTrackingChanged?(false)
         }
         override func mouseDown(with event: NSEvent) {
             guard isEnabled else { return }
             onPointerActivity?(); window?.makeFirstResponder(self)
-            if !tracking { tracking = true; onTrackingChanged?(true) }
+            if !tracking { tracking = true; trackingWidth = bounds.width; onTrackingChanged?(true) }
             updateVolume(with: event)
         }
         override func mouseDragged(with event: NSEvent) {

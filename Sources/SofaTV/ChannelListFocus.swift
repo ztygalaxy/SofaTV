@@ -17,12 +17,10 @@ struct ChannelListFocus: ViewModifier {
                     guard value.presentation == presentation else { return }
                     let channel = value.channel
                     if favoritesOnly, !favorites.contains(channel.id) { favoritesOnly = false }
-                    if !search.isEmpty,
-                       !channel.name.localizedCaseInsensitiveContains(search),
-                       !channel.group.localizedCaseInsensitiveContains(search) {
+                    if !search.isEmpty, !channel.matches(search) {
                         search = ""
                     }
-                    if collapsedGroups.contains(channel.group) { collapsedGroups.remove(channel.group) }
+                    if collapsedGroups.contains(channel.displayGroup) { collapsedGroups.remove(channel.displayGroup) }
                     request = value
                 }
                 .onChange(of: request) { _, value in

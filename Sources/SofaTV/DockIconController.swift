@@ -12,7 +12,7 @@ final class DockIconController {
 
     func show(channelName: String) {
         guard let baseIcon = baseIcon ?? NSApp.applicationIconImage,
-              let badge = ChannelLogoStore.image(for: channelName) ?? ChannelLogoStore.fallbackImage else {
+              let badge = ChannelLogoStore.image(for: channelName) else {
             reset()
             return
         }

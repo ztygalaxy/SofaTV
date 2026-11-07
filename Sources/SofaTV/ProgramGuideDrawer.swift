@@ -31,7 +31,7 @@ private struct ProgramGuideDrawer: View {
         VStack(spacing: 0) {
             VStack(spacing: 4 * scale) {
                 ChannelLogoView(channelName: channel.name, isSelected: false, contentScale: scale * 0.72)
-                Text(channel.name).font(.system(size: 14 * scale, weight: .semibold)).lineLimit(1)
+                Text(channel.displayName).font(.system(size: 14 * scale, weight: .semibold)).lineLimit(1)
                 Text("节目单").font(.system(size: 11 * scale)).foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity)
@@ -62,7 +62,7 @@ private struct ProgramGuideDrawer: View {
         .background(ProgramGuideGlass(fullscreen: fullscreen))
         .overlay(alignment: .trailing) { Color.white.opacity(0.09).frame(width: 1) }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(channel.name)节目单")
+        .accessibilityLabel("\(channel.displayName)节目单")
     }
 
 }
