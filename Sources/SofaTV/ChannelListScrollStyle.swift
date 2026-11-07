@@ -6,9 +6,11 @@ import SwiftUI
 struct ChannelListScrollStyle: NSViewRepresentable {
     let groups: [ChannelListGroup]
     let makeHeader: (String) -> AnyView
+    var pinnedHeaderBackground: NSColor = .sofaBackground
+    var clipsContentBehindHeader = false
 
     func makeNSView(context: Context) -> Probe {
-        let view = Probe()
+        let view = Probe(pinnedHeaderBackground: pinnedHeaderBackground, clipsContentBehindHeader: clipsContentBehindHeader)
         view.pinnedHeader.update(groups: groups, makeHeader: makeHeader)
         return view
     }
@@ -19,15 +21,26 @@ struct ChannelListScrollStyle: NSViewRepresentable {
     static func dismantleNSView(_ view: Probe, coordinator: ()) { view.detach() }
 
     final class Probe: NSView {
-        let pinnedHeader = ChannelListPinnedHeader()
+        let pinnedHeader: ChannelListPinnedHeader
         private weak var styledScrollView: NSScrollView?
         private weak var observedStyleScrollView: NSScrollView?
         private var styleObservation: NSKeyValueObservation?
         private var applyingScrollerStyle = false
         private var configurationPending = false
 
+        init(pinnedHeaderBackground: NSColor, clipsContentBehindHeader: Bool) {
+            pinnedHeader = ChannelListPinnedHeader(backdropColor: pinnedHeaderBackground, clipsContentBehindHeader: clipsContentBehindHeader)
+            super.init(frame: .zero)
+        }
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
         override func viewDidMoveToSuperview() { super.viewDidMoveToSuperview(); scheduleConfiguration() }
+        override func viewDidUnhide() {
+            super.viewDidUnhide()
+            pinnedHeader.redisplay()
+            scheduleConfiguration()
+        }
         deinit { NotificationCenter.default.removeObserver(self) }
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()

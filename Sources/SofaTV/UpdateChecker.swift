@@ -39,9 +39,19 @@ final class UpdateChecker: NSObject {
             let session = URLSession(configuration: configuration)
             let (data, response) = try await session.data(for: request)
             try Task.checkCancellation()
-            guard let response = response as? HTTPURLResponse, response.statusCode == 200 else {
+            guard let response = response as? HTTPURLResponse else {
                 throw URLError(.badServerResponse)
             }
+            // Private GitHub Releases return 404 to the app's anonymous
+            // request even when the owner can open the asset in a browser.
+            // Treat a missing manifest as no available newer release rather
+            // than presenting a misleading error to the viewer.
+            if response.statusCode == 404, let current = currentVersion {
+                finishTask()
+                showMessage("已是最新版", detail: "当前版本：\(current)")
+                return
+            }
+            guard response.statusCode == 200 else { throw URLError(.badServerResponse) }
             let update = try UpdateManifestValidator.decode(data, architecture: architecture)
             guard let current = currentVersion else { throw UpdateManifestError.invalid }
             finishTask()
@@ -110,7 +120,9 @@ final class UpdateChecker: NSObject {
         if !update.notes.isEmpty { alert.accessoryView = releaseNotesView(update.notes) }
         alert.addButton(withTitle: "打开下载页")
         alert.addButton(withTitle: "稍后")
-        if alert.runModal() == .alertFirstButtonReturn { NSWorkspace.shared.open(update.releaseURL) }
+        AppWindows.shared.present(alert) { response in
+            if response == .alertFirstButtonReturn { NSWorkspace.shared.open(update.releaseURL) }
+        }
     }
 
     private func releaseNotesView(_ notes: String) -> NSView {
@@ -149,7 +161,7 @@ final class UpdateChecker: NSObject {
         alert.messageText = title
         alert.informativeText = detail
         alert.addButton(withTitle: "好")
-        alert.runModal()
+        AppWindows.shared.present(alert)
     }
 
     private func userMessage(for error: Error) -> String {

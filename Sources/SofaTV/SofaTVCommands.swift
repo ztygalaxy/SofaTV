@@ -2,21 +2,15 @@ import AppKit
 import SwiftUI
 
 private struct ChannelLibraryKey: FocusedValueKey { typealias Value = Library }
-private struct ChannelUIKey: FocusedValueKey { typealias Value = UIState }
 extension FocusedValues {
     var channelLibrary: Library? {
         get { self[ChannelLibraryKey.self] }
         set { self[ChannelLibraryKey.self] = newValue }
     }
-    var channelUI: UIState? {
-        get { self[ChannelUIKey.self] }
-        set { self[ChannelUIKey.self] = newValue }
-    }
 }
 
 struct SofaTVCommands: Commands {
     @FocusedValue(\.channelLibrary) private var library
-    @FocusedValue(\.channelUI) private var ui
     var body: some Commands {
         CommandGroup(replacing: .appInfo) {
             Button("关于沙发电视") { showAbout() }
@@ -25,21 +19,17 @@ struct SofaTVCommands: Commands {
         }
         CommandGroup(replacing: .newItem) {}
         CommandMenu("频道") {
-            Button("导入频道文件…") { ui?.showImporter = true }.keyboardShortcut("o").disabled(ui == nil)
-            Button("导入在线列表…") { openAddress(direct: false) }.keyboardShortcut("o", modifiers: [.command, .shift]).disabled(ui == nil)
-            Button("打开直播地址…") { openAddress(direct: true) }.keyboardShortcut("l").disabled(ui == nil)
+            Button("导入频道文件…") { library?.importChannels() }.keyboardShortcut("o").disabled(library == nil)
+            Button("导入在线列表…") { library?.showAddressWindow(direct: false) }.keyboardShortcut("o", modifiers: [.command, .shift]).disabled(library == nil)
+            Button("打开直播地址…") { library?.showAddressWindow(direct: true) }.keyboardShortcut("l").disabled(library == nil)
             Divider()
             Button("恢复内置频道") { library?.restoreBuiltins() }.disabled(library == nil)
-            Button("管理频道列表…") { ui?.showListManager = true }.disabled(ui == nil || library == nil)
+            Button("管理频道列表…") { library?.showListManager() }.disabled(library == nil)
         }
         CommandMenu("播放") {
             if let library { PlaybackMenu(library: library) }
         }
     }
-    private func openAddress(direct: Bool) {
-        ui?.direct = direct; ui?.address = ""; ui?.showAddress = true
-    }
-
     @MainActor private func showAbout() { AboutWindowController.shared.show() }
     @MainActor private func checkForUpdates() { UpdateChecker.shared.check() }
 }

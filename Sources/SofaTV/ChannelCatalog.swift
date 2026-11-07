@@ -1,7 +1,13 @@
 import Foundation
 
 struct Channel: Identifiable, Codable, Hashable, Sendable {
+    struct Identity: Hashable {
+        let name: String
+        let group: String
+        init(_ channel: Channel) { name = channel.name; group = channel.group }
+    }
     var id: String { url.absoluteString }
+    var identity: Identity { Identity(self) }
     var alternatives: [URL]? = nil
     var sources: [URL] { [url] + (alternatives ?? []) }
     var name: String
@@ -46,6 +52,8 @@ struct ChannelList: Identifiable, Codable, Hashable {
 }
 
 enum ChannelCatalog {
+    private typealias ChannelKey = Channel.Identity
+
     static func parse(_ text: String) throws -> [Channel] {
         var result: [Channel] = []; var name = ""; var group = "未分组"; var epgID: String?
         for raw in text.components(separatedBy: .newlines) {
@@ -83,33 +91,64 @@ enum ChannelCatalog {
     }
 
     static func merge(_ lists: [ChannelList]) -> [Channel] {
-        lists.reduce(into: []) { $0 = merge($1.channels, into: $0) }
-    }
-
-    static func merge(_ incoming: [Channel], into existing: [Channel]) -> [Channel] {
-        var merged = existing
-        for channel in incoming {
-            if let index = merged.firstIndex(where: { $0.name == channel.name && $0.group == channel.group }) {
-                if merged[index].epgID?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
-                    merged[index].epgID = channel.epgID
-                }
-                let additions = channel.sources.filter { !merged[index].sources.contains($0) }
-                if !additions.isEmpty { merged[index].alternatives = (merged[index].alternatives ?? []) + additions }
-            } else { merged.append(channel) }
+        var merged: [Channel] = []
+        var positions: [ChannelKey: Int] = [:]
+        var knownSources: [ChannelKey: Set<URL>] = [:]
+        for list in lists {
+            append(list.channels, to: &merged, positions: &positions, knownSources: &knownSources)
         }
         return merged
     }
 
-    static func deletingChannel(_ channel: Channel, from lists: [ChannelList]) -> [ChannelList] {
+    static func merge(_ incoming: [Channel], into existing: [Channel]) -> [Channel] {
+        var merged = existing
+        var positions: [ChannelKey: Int] = [:]
+        var knownSources: [ChannelKey: Set<URL>] = [:]
+        for (index, channel) in merged.enumerated() {
+            let key = ChannelKey(channel)
+            // Older saved libraries can contain duplicates. Keep their existing
+            // order and use the first one, matching the previous behaviour.
+            guard positions[key] == nil else { continue }
+            positions[key] = index
+            knownSources[key] = Set(channel.sources)
+        }
+        append(incoming, to: &merged, positions: &positions, knownSources: &knownSources)
+        return merged
+    }
+
+    /// Merges by name and group in linear time. This path runs for every import,
+    /// so repeatedly searching `merged` here made large channel lists stall the UI.
+    private static func append(_ incoming: [Channel], to merged: inout [Channel], positions: inout [ChannelKey: Int], knownSources: inout [ChannelKey: Set<URL>]) {
+        for channel in incoming {
+            let key = ChannelKey(channel)
+            if let index = positions[key] {
+                if merged[index].epgID?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+                    merged[index].epgID = channel.epgID
+                }
+                var sources = knownSources[key] ?? Set(merged[index].sources)
+                let additions = channel.sources.filter { sources.insert($0).inserted }
+                knownSources[key] = sources
+                if !additions.isEmpty { merged[index].alternatives = (merged[index].alternatives ?? []) + additions }
+            } else {
+                positions[key] = merged.count
+                knownSources[key] = Set(channel.sources)
+                merged.append(channel)
+            }
+        }
+    }
+
+    static func deletingChannel(_ channel: Channel, from lists: [ChannelList], inList listID: String? = nil) -> [ChannelList] {
         lists.map { list in
+            guard listID == nil || list.id == listID else { return list }
             var list = list
             list.channels.removeAll { $0.name == channel.name && $0.group == channel.group }
             return list
         }
     }
 
-    static func deletingSource(_ source: URL, from channel: Channel, in lists: [ChannelList]) -> [ChannelList] {
+    static func deletingSource(_ source: URL, from channel: Channel, in lists: [ChannelList], inList listID: String? = nil) -> [ChannelList] {
         lists.map { list in
+            guard listID == nil || list.id == listID else { return list }
             var list = list
             list.channels = list.channels.compactMap { candidate in
                 guard candidate.name == channel.name, candidate.group == channel.group else { return candidate }

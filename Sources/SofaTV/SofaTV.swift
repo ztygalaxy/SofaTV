@@ -1,14 +1,12 @@
 import SwiftUI
 import AVKit
 import WebKit
-import UniformTypeIdentifiers
 
 @MainActor final class Library: ObservableObject {
     @Published var channels: [Channel] = []
     @Published private(set) var channelLists: [ChannelList] = []
     @Published var favorites: Set<String> = []
     @Published var selected: Channel?
-    @Published var error: String?
     @Published var loading = false
     @Published var sourceIndex = 0
     @Published var webChannel: URL?
@@ -51,6 +49,7 @@ import UniformTypeIdentifiers
     private var allowReducedH5e = false
     private var cmgLoader: CmgAssetLoader?
     let player = AVPlayer()
+    var importPanel: NSOpenPanel?
     private var observation: NSKeyValueObservation?
     private var playbackObservers: [NSObjectProtocol] = []
     private var timeout: Task<Void, Never>?
@@ -61,7 +60,7 @@ import UniformTypeIdentifiers
         player.automaticallyWaitsToMinimizeStalling = mode != 2
     }
     func restoreBuiltins() {
-        do { guard let url = Bundle.main.url(forResource: "builtin_channels", withExtension: "txt") else { throw NSError(domain: "SofaTV", code: 2, userInfo: [NSLocalizedDescriptionKey: "应用内置频道文件缺失，请重新安装完整应用。"]) }; try parse(String(contentsOf: url, encoding: .utf8), as: .builtIn()) } catch { self.error = error.localizedDescription }
+        do { guard let url = Bundle.main.url(forResource: "builtin_channels", withExtension: "txt") else { throw NSError(domain: "SofaTV", code: 2, userInfo: [NSLocalizedDescriptionKey: "应用内置频道文件缺失，请重新安装完整应用。"]) }; try parse(String(contentsOf: url, encoding: .utf8), as: .builtIn()) } catch { showError(error.localizedDescription) }
     }
     func changeSource(_ index: Int) {
         guard let channel = selected, channel.sources.indices.contains(index) else { return }
@@ -123,7 +122,7 @@ import UniformTypeIdentifiers
         else {
             videoVisible = false; webVideo = false
             DockIconController.shared.reset()
-            playbackStatus = "播放失败"; error = message
+            playbackStatus = "播放失败"; showError(message)
         }
     }
     private func start(_ channel: Channel, index: Int) {
@@ -166,7 +165,12 @@ import UniformTypeIdentifiers
                 .flatMap(\.sources).compactMap(webpageURL)
         }
         priority += channels.filter { favorites.contains($0.id) }.flatMap(\.sources).compactMap(webpageURL)
-        warmup.configure(pages: pages, prioritized: priority)
+        // Resolving an entire web-channel catalogue is useful for ordinary lists,
+        // but a very large import would otherwise keep the hidden web views busy
+        // forever. At that size, keep switches fast by warming the next/previous
+        // channels and favourites only.
+        let fullCatalogueLimit = 300
+        warmup.configure(pages: pages.count > fullCatalogueLimit ? priority : pages, prioritized: priority)
     }
     private func startWeb(_ page: URL, channel: Channel, index: Int) {
         resolving = true; playbackStatus = "正在解析视频…"
@@ -346,6 +350,7 @@ import UniformTypeIdentifiers
         }
     }
     init() {
+        player.audiovisualBackgroundPlaybackPolicy = .continuesIfPossible
         if let data = UserDefaults.standard.data(forKey: "channel-lists"), let saved = try? JSONDecoder().decode([ChannelList].self, from: data) {
             channelLists = saved; channels = ChannelCatalog.merge(saved)
         } else if let data = UserDefaults.standard.data(forKey: "channels"), let saved = try? JSONDecoder().decode([Channel].self, from: data), !saved.isEmpty {
@@ -362,7 +367,7 @@ import UniformTypeIdentifiers
             DockIconController.shared.reset()
             player.pause(); player.replaceCurrentItem(with: nil)
             playbackStatus = "暂无视频直链"
-            error = "这个频道没有可用线路。"
+            showError("这个频道没有可用线路。")
             return
         }
         let saved = UserDefaults.standard.string(forKey: "line-" + channel.id)
@@ -401,15 +406,16 @@ import UniformTypeIdentifiers
         let previousSource = previousSelected.flatMap { channel in channel.sources.indices.contains(sourceIndex) ? channel.sources[sourceIndex] : nil }
         let selectedWasManaged = previousSelected.map { selected in previousChannels.contains { $0.id == selected.id && $0.name == selected.name && $0.group == selected.group } } ?? false
         channels = ChannelCatalog.merge(channelLists)
+        let refreshedByIdentity = Dictionary(uniqueKeysWithValues: channels.map { ($0.identity, $0) })
         for old in previousChannels {
-            guard let refreshed = channels.first(where: { $0.name == old.name && $0.group == old.group }), old.id != refreshed.id else { continue }
+            guard let refreshed = refreshedByIdentity[old.identity], old.id != refreshed.id else { continue }
             migratePreferences(from: old.id, to: refreshed.id)
             if favorites.remove(old.id) != nil { favorites.insert(refreshed.id) }
         }
         favorites.formIntersection(Set(channels.map(\.id)))
         configureWarmup()
         guard selectedWasManaged, let previousSelected else { persistLibrary(); return }
-        if let refreshed = channels.first(where: { $0.name == previousSelected.name && $0.group == previousSelected.group }) {
+        if let refreshed = refreshedByIdentity[previousSelected.identity] {
             self.selected = refreshed
             if let previousSource, let index = refreshed.sources.firstIndex(of: previousSource) { sourceIndex = index }
             else { play(refreshed) }
@@ -427,11 +433,11 @@ import UniformTypeIdentifiers
         }
         rebuildChannels()
     }
-    func deleteChannel(_ channel: Channel) {
-        channelLists = ChannelCatalog.deletingChannel(channel, from: channelLists); rebuildChannels()
+    func deleteChannel(_ channel: Channel, fromList listID: String? = nil) {
+        channelLists = ChannelCatalog.deletingChannel(channel, from: channelLists, inList: listID); rebuildChannels()
     }
-    func deleteSource(_ source: URL, from channel: Channel) {
-        channelLists = ChannelCatalog.deletingSource(source, from: channel, in: channelLists); rebuildChannels()
+    func deleteSource(_ source: URL, from channel: Channel, fromList listID: String? = nil) {
+        channelLists = ChannelCatalog.deletingSource(source, from: channel, in: channelLists, inList: listID); rebuildChannels()
     }
     func deleteGroup(_ group: String) {
         channelLists = ChannelCatalog.deletingGroup(group, from: channelLists); rebuildChannels()
@@ -439,28 +445,19 @@ import UniformTypeIdentifiers
     func deleteList(_ list: ChannelList) {
         channelLists.removeAll { $0.id == list.id }; rebuildChannels()
     }
-    func channelCount(for list: ChannelList) -> Int { list.channels.count }
     func load(_ address: String, direct: Bool) async {
-        guard let url = URL(string: address), ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { error = "请输入有效的 HTTP/HTTPS 地址"; return }
+        guard let url = URL(string: address), ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { showError("请输入有效的 HTTP/HTTPS 地址"); return }
         if direct { play(Channel(name: url.lastPathComponent, group: "直播", url: url)); return }
         loading = true; defer { loading = false }
-        do { let (data, response) = try await URLSession.shared.data(from: url); guard (response as? HTTPURLResponse)?.statusCode == 200, let text = String(data: data, encoding: .utf8) else { throw URLError(.badServerResponse) }; try parse(text, as: .online(url)) } catch { self.error = error.localizedDescription }
+        do { let (data, response) = try await URLSession.shared.data(from: url); guard (response as? HTTPURLResponse)?.statusCode == 200, let text = String(data: data, encoding: .utf8) else { throw URLError(.badServerResponse) }; try parse(text, as: .online(url)) } catch { showError(error.localizedDescription) }
     }
 }
-enum LibraryDeletion: Identifiable {
+enum LibraryDeletion {
     case channel(Channel)
     case source(Channel, URL)
     case group(String)
     case list(ChannelList)
 
-    var id: String {
-        switch self {
-        case .channel(let channel): "channel:" + channel.group + ":" + channel.name
-        case .source(let channel, let source): "source:" + channel.group + ":" + channel.name + ":" + source.absoluteString
-        case .group(let group): "group:" + group
-        case .list(let list): "list:" + list.id
-        }
-    }
     var title: String {
         switch self {
         case .channel: "删除频道？"
@@ -477,6 +474,16 @@ enum LibraryDeletion: Identifiable {
         case .list(let list): "将移除“\(list.name)”贡献的频道和线路；其他列表中重复存在的内容会保留。"
         }
     }
+    func message(in list: ChannelList?) -> String {
+        guard let list else { return message }
+        switch self {
+        case .channel(let channel):
+            return "将从“\(list.name)”移除“\(channel.name)”及其在此来源中的全部线路。其他来源的同名频道会保留。"
+        case .source(let channel, let source):
+            return "将从“\(list.name)”的“\(channel.name)”删除线路 \(source.host ?? source.absoluteString)。其他来源的线路会保留。"
+        default: return message
+        }
+    }
 }
 @MainActor final class UIState: ObservableObject {
     @Published var search = ""
@@ -490,12 +497,6 @@ enum LibraryDeletion: Identifiable {
     func toggleGroup(_ group: String) {
         if !collapsedGroups.insert(group).inserted { collapsedGroups.remove(group) }
     }
-    @Published var address = ""
-    @Published var showAddress = false
-    @Published var direct = false
-    @Published var showImporter = false
-    @Published var showListManager = false
-    @Published var deletion: LibraryDeletion?
 }
 struct ContentView: View {
     @StateObject private var library = Library()
@@ -507,20 +508,21 @@ struct ContentView: View {
     private let topBarSpacing: CGFloat = 10
     private let searchWidth: CGFloat = 72 * 1.2 * 1.5
     private let filterWidth: CGFloat = 129.6
-    var filtered: [Channel] { library.channels.filter { (!ui.favoritesOnly || library.favorites.contains($0.id)) && (ui.search.isEmpty || $0.name.localizedCaseInsensitiveContains(ui.search) || $0.group.localizedCaseInsensitiveContains(ui.search)) } }
+    private struct SidebarSection: Identifiable {
+        let name: String
+        let channels: [Channel]
+        var id: String { name }
+    }
+
+    private struct SidebarSnapshot {
+        let channelCount: Int
+        let sections: [SidebarSection]
+        let pinnedGroups: [ChannelListGroup]
+    }
 
     init() {
         let savedWidth = UserDefaults.standard.double(forKey: "sidebarWidth")
         _sidebarWidth = State(initialValue: savedWidth >= 294 ? CGFloat(savedWidth) : 294)
-    }
-
-    private func performDeletion(_ deletion: LibraryDeletion) {
-        switch deletion {
-        case .channel(let channel): library.deleteChannel(channel)
-        case .source(let channel, let source): library.deleteSource(source, from: channel)
-        case .group(let group): library.deleteGroup(group)
-        case .list(let list): library.deleteList(list)
-        }
     }
 
     private func groupHeader(_ group: String) -> some View {
@@ -544,14 +546,27 @@ struct ContentView: View {
         .listRowBackground(Color.sofaBackground)
         .listRowSeparator(.hidden)
         .contextMenu {
-            Button("删除分组…", role: .destructive) { ui.deletion = .group(group) }
+            Button("删除分组…", role: .destructive) { library.confirmDeletion(.group(group)) }
         }
     }
 
-    private var sidebarGroups: [ChannelListGroup] {
-        Dictionary(grouping: filtered, by: \.group).keys.sorted().map { group in
-            ChannelListGroup(name: group, visibleChannelCount: ui.collapsedGroups.contains(group) ? 0 : filtered.filter { $0.group == group }.count)
+    /// Build the visible list once per view refresh. The old view filtered all
+    /// channels again for every group, which becomes especially expensive for
+    /// large imported catalogues.
+    private func sidebarSnapshot() -> SidebarSnapshot {
+        var channelsByGroup: [String: [Channel]] = [:]
+        var channelCount = 0
+        for channel in library.channels {
+            guard (!ui.favoritesOnly || library.favorites.contains(channel.id)),
+                  (ui.search.isEmpty || channel.name.localizedCaseInsensitiveContains(ui.search) || channel.group.localizedCaseInsensitiveContains(ui.search)) else { continue }
+            channelCount += 1
+            channelsByGroup[channel.group, default: []].append(channel)
         }
+        let sections = channelsByGroup.keys.sorted().map { SidebarSection(name: $0, channels: channelsByGroup[$0] ?? []) }
+        let pinnedGroups = sections.map { section in
+            ChannelListGroup(name: section.name, visibleChannelCount: ui.collapsedGroups.contains(section.name) ? 0 : section.channels.count)
+        }
+        return SidebarSnapshot(channelCount: channelCount, sections: sections, pinnedGroups: pinnedGroups)
     }
 
     var body: some View {
@@ -559,6 +574,7 @@ struct ContentView: View {
             let maximumSidebarWidth = max(minimumSidebarWidth, geometry.size.width - minimumVideoWidth - 1)
             let visibleSidebarWidth = min(max(sidebarWidth, minimumSidebarWidth), maximumSidebarWidth)
             let sidebarHidden = ui.sidebarCollapsed && library.selected != nil
+            let snapshot = sidebarSnapshot()
             HStack(spacing: 0) {
                 VStack(spacing: 0) {
                     HStack(spacing: 0) {
@@ -580,10 +596,10 @@ struct ContentView: View {
                     }
                     .padding(.horizontal, 12).padding(.top, 44).padding(.bottom, 10)
                     List {
-                    ForEach(Array(Set(filtered.map(\.group))).sorted(), id: \.self) { group in
-                        groupHeader(group)
-                        if !ui.collapsedGroups.contains(group) {
-                            ForEach(filtered.filter { $0.group == group }) { channel in
+                    ForEach(snapshot.sections) { section in
+                        groupHeader(section.name)
+                        if !ui.collapsedGroups.contains(section.name) {
+                            ForEach(section.channels) { channel in
                                 ChannelRow(
                                     channel: channel,
                                     isFavorite: library.favorites.contains(channel.id),
@@ -591,8 +607,8 @@ struct ContentView: View {
                                     currentProgram: programGuide.titles[channel.id],
                                     onPlay: { library.play(channel) },
                                     onFavorite: { library.favorite(channel) },
-                                    onDeleteSource: { ui.deletion = .source(channel, $0) },
-                                    onDelete: { ui.deletion = .channel(channel) }
+                                    onDeleteSource: { library.confirmDeletion(.source(channel, $0)) },
+                                    onDelete: { library.confirmDeletion(.channel(channel)) }
                                 )
                                 .equatable()
                                 .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
@@ -607,7 +623,7 @@ struct ContentView: View {
                     .scrollContentBackground(.hidden)
                     .background(Color.sofaBackground)
                     .background {
-                        ChannelListScrollStyle(groups: sidebarGroups, makeHeader: { AnyView(groupHeader($0)) })
+                        ChannelListScrollStyle(groups: snapshot.pinnedGroups, makeHeader: { AnyView(groupHeader($0)) })
                     }
                     .overlay {
                     if library.channels.isEmpty {
@@ -616,7 +632,7 @@ struct ContentView: View {
                             systemImage: "tv",
                             description: "从菜单栏的“频道”菜单导入列表"
                         )
-                    } else if filtered.isEmpty {
+                    } else if snapshot.channelCount == 0 {
                         if ui.favoritesOnly {
                             SidebarEmptyView(
                                 ui.search.isEmpty ? "暂无收藏频道" : "收藏中没有匹配的频道",
@@ -629,9 +645,9 @@ struct ContentView: View {
                     }
                     }
                     HStack {
-                    Text(library.playbackStatus).lineLimit(1)
+                    AppLogoView()
                     Spacer(minLength: 6)
-                    Text("\(filtered.count) 个频道").fixedSize()
+                    Text("\(snapshot.channelCount) 个频道").fixedSize()
                     }
                     .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 12).padding(.vertical, 8)
                 }
@@ -659,9 +675,9 @@ struct ContentView: View {
                 .accessibilityHidden(sidebarHidden)
                 Group {
                     if library.selected != nil {
-                        VideoStage(library: library, sidebarCollapsed: sidebarHidden) {
+                        VideoStage(library: library, ui: ui, programGuide: programGuide, sidebarCollapsed: sidebarHidden) { collapsed in
                             let duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.22
-                            withAnimation(.easeInOut(duration: duration)) { ui.sidebarCollapsed.toggle() }
+                            withAnimation(.easeInOut(duration: duration)) { ui.sidebarCollapsed = collapsed }
                         }
                     }
                     else { EmptyPlaybackView() }
@@ -681,7 +697,6 @@ struct ContentView: View {
         .ignoresSafeArea(.container, edges: .top)
         .background(MainWindowChrome(title: library.selected?.name ?? "沙发电视", onClose: library.stopPlayback).frame(width: 0, height: 0))
         .focusedSceneValue(\.channelLibrary, library)
-        .focusedSceneValue(\.channelUI, ui)
         .onAppear { programGuide.setChannels(library.channels) }
         .onChange(of: library.channels) { _, channels in programGuide.setChannels(channels) }
         .onDisappear { programGuide.stop() }
@@ -692,87 +707,6 @@ struct ContentView: View {
             if library.loading {
                 ProgressView("正在加载频道…").padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
             }
-        }
-        .sheet(isPresented: $ui.showAddress) {
-            VStack(alignment: .leading, spacing: 16) {
-                Text(ui.direct ? "打开直播地址" : "导入在线频道列表").font(.title2)
-                TextField("https://…", text: $ui.address).textFieldStyle(.roundedBorder)
-                HStack {
-                    Button("取消") { ui.showAddress = false }
-                    Spacer()
-                    Button("打开") { ui.showAddress = false; Task { await library.load(ui.address, direct: ui.direct) } }.keyboardShortcut(.defaultAction)
-                }
-            }.padding(24).frame(width: 460)
-        }
-        .sheet(isPresented: $ui.showListManager) {
-            ChannelListManager(library: library)
-        }
-        .fileImporter(isPresented: $ui.showImporter, allowedContentTypes: [.item]) { result in
-            do {
-                let url = try result.get(); let access = url.startAccessingSecurityScopedResource()
-                defer { if access { url.stopAccessingSecurityScopedResource() } }
-                try library.parse(String(contentsOf: url, encoding: .utf8), as: .file(url))
-            } catch { library.error = error.localizedDescription }
-        }
-        .alert(ui.deletion?.title ?? "确认删除", isPresented: Binding(get: { ui.deletion != nil }, set: { if !$0 { ui.deletion = nil } }), presenting: ui.deletion) { deletion in
-            Button("取消", role: .cancel) { ui.deletion = nil }
-            Button("删除", role: .destructive) { performDeletion(deletion); ui.deletion = nil }
-        } message: { deletion in
-            Text(deletion.message)
-        }
-        .alert("无法打开", isPresented: Binding(get: { library.error != nil }, set: { if !$0 { library.error = nil } })) {
-            Button("好") { library.error = nil }
-        } message: { Text(library.error ?? "") }
-    }
-}
-struct ChannelListManager: View {
-    @ObservedObject var library: Library
-    @Environment(\.dismiss) private var dismiss
-    @ViewState private var pendingList: ChannelList?
-
-    private func icon(for kind: ChannelList.Kind) -> String {
-        switch kind {
-        case .builtIn: "shippingbox"
-        case .file: "doc.text"
-        case .online: "link"
-        case .legacy: "tray.full"
-        }
-    }
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("管理频道列表").font(.title2.bold())
-            if library.channelLists.isEmpty {
-                ContentUnavailableView("没有已导入的列表", systemImage: "list.bullet.rectangle")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                List(library.channelLists) { list in
-                    HStack(spacing: 12) {
-                        Image(systemName: icon(for: list.kind)).font(.title3).foregroundStyle(.secondary).frame(width: 24)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(list.name).font(.headline)
-                            Text(list.detail).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
-                        }
-                        Spacer(minLength: 12)
-                        Text("\(library.channelCount(for: list)) 个频道").foregroundStyle(.secondary)
-                        Button(role: .destructive) { pendingList = list } label: { Image(systemName: "trash") }
-                            .buttonStyle(.borderless).help("删除这份频道列表")
-                    }
-                    .padding(.vertical, 4)
-                }
-                .listStyle(.inset)
-                .scrollContentBackground(.hidden)
-                .background(Color.sofaBackground)
-            }
-            HStack { Spacer(); Button("完成") { dismiss() }.keyboardShortcut(.defaultAction) }
-        }
-        .padding(20)
-        .frame(width: 560, height: 380)
-        .background(Color.sofaBackground)
-        .alert("删除导入列表？", isPresented: Binding(get: { pendingList != nil }, set: { if !$0 { pendingList = nil } }), presenting: pendingList) { list in
-            Button("取消", role: .cancel) { pendingList = nil }
-            Button("删除", role: .destructive) { library.deleteList(list); pendingList = nil }
-        } message: { list in
-            Text("将移除“\(list.name)”贡献的频道和线路；其他列表中重复存在的内容会保留。")
         }
     }
 }

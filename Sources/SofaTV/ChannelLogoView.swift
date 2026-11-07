@@ -1,9 +1,28 @@
 import AppKit
 import SwiftUI
 
+struct AppLogoView: View {
+    var size: CGFloat = 16
+
+    var body: some View {
+        Group {
+            if let image = ChannelLogoStore.fallbackImage {
+                Image(nsImage: image)
+                    .renderingMode(.original)
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+            }
+        }
+        .frame(width: size, height: size)
+        .accessibilityLabel("沙发电视")
+    }
+}
+
 struct ChannelLogoView: View {
     let channelName: String
     let isSelected: Bool
+    var contentScale: CGFloat = 1
 
     var body: some View {
         Group {
@@ -21,11 +40,11 @@ struct ChannelLogoView: View {
                     .scaledToFit()
             } else {
                 Image(systemName: "tv")
-                    .font(.system(size: 26, weight: .regular))
+                    .font(.system(size: 26 * contentScale, weight: .regular))
                     .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
             }
         }
-        .frame(width: 58, height: 36)
+        .frame(width: 58 * contentScale, height: 36 * contentScale)
         .accessibilityHidden(true)
     }
 }

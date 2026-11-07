@@ -6,7 +6,15 @@ swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/Sof
 /private/tmp/sofatv-cmg-check
 swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/SofaTV/PlaybackRace.swift tests/PlaybackRaceChecks.swift -o /private/tmp/sofatv-race-check
 /private/tmp/sofatv-race-check
+swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/SofaTV/AppWindows.swift tests/AppWindowsChecks.swift -o /private/tmp/sofatv-app-windows-check
+/private/tmp/sofatv-app-windows-check
+swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/SofaTV/VideoWindowHost.swift tests/VideoWindowHostChecks.swift -o /private/tmp/sofatv-video-windows-check
+/private/tmp/sofatv-video-windows-check
+swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/SofaTV/SidebarToggleButton.swift tests/SidebarToggleButtonChecks.swift -o /private/tmp/sofatv-sidebar-button-check
+/private/tmp/sofatv-sidebar-button-check
 python3 tests/check-playlist.py
+swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/SofaTV/SofaTheme.swift Sources/SofaTV/ChannelListPinnedHeader.swift tests/ChannelListPinnedHeaderChecks.swift -o /private/tmp/sofatv-pinned-header-check
+/private/tmp/sofatv-pinned-header-check
 swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/SofaTV/ChannelLogoResolver.swift tests/ChannelLogoResolverChecks.swift -o /private/tmp/sofatv-logo-check
 /private/tmp/sofatv-logo-check
 clang -O2 -I scripts tests/H5ePesChecks.c -o /private/tmp/sofatv-h5e-pes-check

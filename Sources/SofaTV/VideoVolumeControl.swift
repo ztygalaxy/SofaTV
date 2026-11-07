@@ -143,7 +143,7 @@ final class VideoVolumeControl: NSView {
     override func scrollWheel(with event: NSEvent) { onPointerActivity?(); onScroll?(event) }
 
     /// The native button keeps target/action and accessibility activation semantics.
-    private final class SymbolButton: NSButton {
+    final class SymbolButton: NSButton {
         var onPointerActivity: (() -> Void)?
         var onTrackingChanged: ((Bool) -> Void)?
         var onScroll: ((NSEvent) -> Void)?
@@ -164,9 +164,10 @@ final class VideoVolumeControl: NSView {
         override var mouseDownCanMoveWindow: Bool { false }
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-        func setSymbol(_ name: String) {
-            if let cached = Self.icons[name] { icon = cached }
-            else if let rendered = Self.renderSymbol(name) { Self.icons[name] = rendered; icon = rendered }
+        func setSymbol(_ name: String, rotation: CGFloat = 0) {
+            let key = "\(name):\(rotation)"
+            if let cached = Self.icons[key] { icon = cached }
+            else if let rendered = Self.renderSymbol(name, rotation: rotation) { Self.icons[key] = rendered; icon = rendered }
             needsDisplay = true
         }
         func setImage(_ image: NSImage) {
@@ -199,13 +200,16 @@ final class VideoVolumeControl: NSView {
                   let cropped = bitmap.cgImage?.cropping(to: CGRect(x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1)) else { return nil }
             return NSImage(cgImage: cropped, size: NSSize(width: cropped.width, height: cropped.height))
         }
-        private static func renderSymbol(_ name: String) -> NSImage? {
+        private static func renderSymbol(_ name: String, rotation: CGFloat) -> NSImage? {
             guard let symbol = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
                 .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 20, weight: .medium)) else { return nil }
-            // Crop SF Symbols' transparent padding once so all painted icons are exactly 20 points wide.
+            // Crop after rotating so the painted outline fits the same 20-point icon size.
             let scale: CGFloat = 4
-            let width = max(1, Int(ceil(symbol.size.width * scale)))
-            let height = max(1, Int(ceil(symbol.size.height * scale)))
+            let symbolWidth = ceil(symbol.size.width * scale)
+            let symbolHeight = ceil(symbol.size.height * scale)
+            let radians = rotation * .pi / 180
+            let width = max(1, Int(ceil(abs(symbolWidth * cos(radians)) + abs(symbolHeight * sin(radians)))))
+            let height = max(1, Int(ceil(abs(symbolWidth * sin(radians)) + abs(symbolHeight * cos(radians)))))
             guard let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
                                                 bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
                                                 colorSpaceName: .deviceRGB, bitmapFormat: [], bytesPerRow: width * 4, bitsPerPixel: 32),
@@ -213,7 +217,11 @@ final class VideoVolumeControl: NSView {
             NSGraphicsContext.saveGraphicsState(); NSGraphicsContext.current = context
             let rect = NSRect(x: 0, y: 0, width: width, height: height)
             context.cgContext.clear(rect)
-            symbol.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
+            context.cgContext.saveGState()
+            context.cgContext.translateBy(x: CGFloat(width) / 2, y: CGFloat(height) / 2)
+            context.cgContext.rotate(by: radians)
+            symbol.draw(in: NSRect(x: -symbolWidth / 2, y: -symbolHeight / 2, width: symbolWidth, height: symbolHeight), from: .zero, operation: .sourceOver, fraction: 1)
+            context.cgContext.restoreGState()
             NSColor.white.withAlphaComponent(0.94).setFill(); rect.fill(using: .sourceIn)
             NSGraphicsContext.restoreGraphicsState()
             var minX = width, minY = height, maxX = -1, maxY = -1
@@ -228,8 +236,9 @@ final class VideoVolumeControl: NSView {
         }
         override func draw(_ dirtyRect: NSRect) {
             guard let icon else { return }
-            let width = Layout.speakerVisibleWidth
-            let height = width * icon.size.height / max(1, icon.size.width)
+            let scale = Layout.speakerVisibleWidth / max(1, max(icon.size.width, icon.size.height))
+            let width = icon.size.width * scale
+            let height = icon.size.height * scale
             let rect = NSRect(x: bounds.midX - width / 2, y: bounds.midY - height / 2, width: width, height: height)
             icon.draw(in: rect, from: .zero, operation: .sourceOver, fraction: isEnabled ? 1 : 0.4, respectFlipped: true, hints: nil)
         }

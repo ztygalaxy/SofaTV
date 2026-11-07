@@ -7,6 +7,7 @@ final class SidebarToggleButton: NSButton {
     var onTrackingChanged: ((Bool) -> Void)?
     private var pointerTrackingArea: NSTrackingArea?
     private var collapsedState: Bool?
+    private var tracking = false
 
     init() {
         super.init(frame: .zero)
@@ -42,8 +43,26 @@ final class SidebarToggleButton: NSButton {
     override func mouseEntered(with event: NSEvent) { onPointerActivity?() }
     override func mouseMoved(with event: NSEvent) { onPointerActivity?() }
     override func mouseDown(with event: NSEvent) {
+        guard isEnabled, !tracking else { return }
+        onPointerActivity?()
+        tracking = true
         onTrackingChanged?(true)
-        super.mouseDown(with: event)
+    }
+    override func mouseDragged(with event: NSEvent) { if tracking { onPointerActivity?() } }
+    override func mouseUp(with event: NSEvent) {
+        guard tracking else { return }
+        let activate = isEnabled && !isHidden && bounds.contains(convert(event.locationInWindow, from: nil))
+        cancelTracking()
+        if activate { sendAction(action, to: target) }
+    }
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil { cancelTracking() }
+    }
+    override func viewDidHide() { super.viewDidHide(); cancelTracking() }
+    private func cancelTracking() {
+        guard tracking else { return }
+        tracking = false
         onTrackingChanged?(false)
     }
 }

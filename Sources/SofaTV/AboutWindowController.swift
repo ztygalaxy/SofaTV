@@ -59,17 +59,22 @@ final class AboutWindowController: NSWindowController {
 
         let name = label("沙发电视", identifier: "About.name", size: 24, weight: .bold)
         stack.addArrangedSubview(name)
-        stack.setCustomSpacing(4, after: name)
+        stack.setCustomSpacing(10, after: name)
 
+        let details = NSStackView()
+        details.orientation = .vertical
+        details.alignment = .centerX
+        details.spacing = 3
+        let description = label("坐回沙发，好好看电视。", identifier: "About.description", size: 13)
+        details.addArrangedSubview(description)
         let version = label(versionText, identifier: "About.version", size: 13)
         version.textColor = .secondaryLabelColor
-        stack.addArrangedSubview(version)
-
-        let description = label("坐回沙发，好好看电视。", identifier: "About.description", size: 13)
-        stack.addArrangedSubview(description)
+        details.addArrangedSubview(version)
+        stack.addArrangedSubview(details)
         NSLayoutConstraint.activate([
-            description.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            description.heightAnchor.constraint(equalToConstant: 36)
+            details.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            description.widthAnchor.constraint(equalTo: details.widthAnchor),
+            description.heightAnchor.constraint(equalToConstant: 22)
         ])
 
         let links = NSStackView()
@@ -85,11 +90,6 @@ final class AboutWindowController: NSWindowController {
         window.center()
     }
 
-    private var versionText: String {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
-        return "版本 \(version)"
-    }
-
     private func label(
         _ value: String,
         identifier: String,
@@ -102,6 +102,10 @@ final class AboutWindowController: NSWindowController {
         label.alignment = .center
         label.isSelectable = true
         return label
+    }
+
+    private var versionText: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
     }
 
     private func linkButton(_ title: String, identifier: String, action: Selector) -> NSButton {

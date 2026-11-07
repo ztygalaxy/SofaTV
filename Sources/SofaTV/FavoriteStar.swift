@@ -2,6 +2,7 @@ import SwiftUI
 
 struct FavoriteStar: View {
     let isFavorite: Bool
+    var contentScale: CGFloat = 1
 
     private static let side: CGFloat = 19
     private static let outline = StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round)
@@ -13,10 +14,10 @@ struct FavoriteStar: View {
     var body: some View {
         RoundedStar()
             .fill(isFavorite ? Color.primary : Color.clear)
-            .overlay { RoundedStar().stroke(style: Self.outline) }
-            .frame(width: Self.side, height: Self.side)
+            .overlay { RoundedStar().stroke(style: StrokeStyle(lineWidth: 1.5 * contentScale, lineCap: .round, lineJoin: .round)) }
+            .frame(width: Self.side * contentScale, height: Self.side * contentScale)
             // Keep the visible edge aligned without a state-dependent layout guide.
-            .offset(x: Self.trailingCorrection)
+            .offset(x: Self.trailingCorrection * contentScale)
     }
 }
 
