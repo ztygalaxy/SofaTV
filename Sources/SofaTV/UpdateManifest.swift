@@ -1,6 +1,6 @@
 import Foundation
 
-struct SemanticVersion: Comparable, CustomStringConvertible {
+struct SemanticVersion: Comparable, CustomStringConvertible, Sendable {
     let major: Int
     let minor: Int
     let patch: Int
@@ -24,7 +24,7 @@ struct SemanticVersion: Comparable, CustomStringConvertible {
     }
 }
 
-struct UpdateAsset: Decodable {
+struct UpdateAsset: Decodable, Sendable {
     let name: String
     let sha256: String
 }
@@ -36,7 +36,7 @@ struct UpdateManifest: Decodable {
     let assets: [String: UpdateAsset]
 }
 
-struct VerifiedUpdate {
+struct VerifiedUpdate: Sendable {
     let version: SemanticVersion
     let notes: String
     let asset: UpdateAsset

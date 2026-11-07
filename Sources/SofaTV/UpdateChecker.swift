@@ -5,62 +5,74 @@ import Foundation
 final class UpdateChecker: NSObject {
     static let shared = UpdateChecker()
 
+    private let automatic = AutomaticUpdateCheck()
     private var task: Task<Void, Never>?
+    private var checkID: UUID?
     private var progressPanel: NSPanel?
+    private var updateWindow: UpdateWindowController?
+
+    func startAutomaticCheck(isWatching: @escaping () -> Bool) {
+        automatic.start(isWatching: isWatching, fetch: { [weak self] in
+            guard let self, let current = currentVersion,
+                  let update = try await fetchUpdate(), update.version > current else { return nil }
+            return update
+        }, show: { [weak self] update in
+            guard let self, let current = currentVersion else { return }
+            showUpdate(update, current: current)
+        })
+    }
 
     func check() {
+        automatic.cancel()
+        if let window = updateWindow?.window, window.isVisible {
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
         guard task == nil else {
             progressPanel?.makeKeyAndOrderFront(nil)
             return
         }
+        let id = UUID()
+        checkID = id
         showProgress()
-        task = Task { [weak self] in await self?.performCheck() }
+        task = Task { [weak self] in await self?.performCheck(id: id) }
     }
 
     @objc private func cancel() {
         task?.cancel()
         task = nil
+        checkID = nil
         closeProgress()
     }
 
-    private func performCheck() async {
+    private func fetchUpdate() async throws -> VerifiedUpdate? {
+        var request = URLRequest(url: UpdateManifestValidator.manifestURL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30)
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("SofaTV-Updater", forHTTPHeaderField: "User-Agent")
+        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 30
+        configuration.timeoutIntervalForResource = 60
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        let (data, response) = try await session.data(for: request)
+        try Task.checkCancellation()
+        guard let response = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
+        if response.statusCode == 404 { return nil }
+        guard response.statusCode == 200 else { throw URLError(.badServerResponse) }
+        return try UpdateManifestValidator.decode(data, architecture: architecture)
+    }
+
+    private func performCheck(id: UUID) async {
         do {
-            var request = URLRequest(
-                url: UpdateManifestValidator.manifestURL,
-                cachePolicy: .reloadIgnoringLocalCacheData,
-                timeoutInterval: 30
-            )
-            request.setValue("application/json", forHTTPHeaderField: "Accept")
-            request.setValue("SofaTV-Updater", forHTTPHeaderField: "User-Agent")
-            request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
-            let configuration = URLSessionConfiguration.ephemeral
-            configuration.timeoutIntervalForRequest = 30
-            configuration.timeoutIntervalForResource = 60
-            let session = URLSession(configuration: configuration)
-            let (data, response) = try await session.data(for: request)
+            let update = try await fetchUpdate()
             try Task.checkCancellation()
-            guard let response = response as? HTTPURLResponse else {
-                throw URLError(.badServerResponse)
-            }
-            // Private GitHub Releases return 404 to the app's anonymous
-            // request even when the owner can open the asset in a browser.
-            // Treat a missing manifest as no available newer release rather
-            // than presenting a misleading error to the viewer.
-            if response.statusCode == 404, let current = currentVersion {
-                finishTask()
-                showMessage("已是最新版", detail: "当前版本：\(current)")
-                return
-            }
-            guard response.statusCode == 200 else { throw URLError(.badServerResponse) }
-            let update = try UpdateManifestValidator.decode(data, architecture: architecture)
             guard let current = currentVersion else { throw UpdateManifestError.invalid }
-            finishTask()
-            if update.version > current { showUpdate(update, current: current) }
+            guard finishTask(id: id) else { return }
+            if let update, update.version > current { showUpdate(update, current: current) }
             else { showMessage("已是最新版", detail: "当前版本：\(current)") }
-        } catch is CancellationError {
-            finishTask()
         } catch {
-            finishTask()
+            guard finishTask(id: id), !(error is CancellationError), (error as? URLError)?.code != .cancelled else { return }
             showMessage("检查更新失败", detail: userMessage(for: error))
         }
     }
@@ -80,18 +92,16 @@ final class UpdateChecker: NSObject {
         #endif
     }
 
-    private func finishTask() {
+    @discardableResult private func finishTask(id: UUID) -> Bool {
+        guard checkID == id else { return false }
         task = nil
+        checkID = nil
         closeProgress()
+        return true
     }
 
     private func showProgress() {
-        let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 380, height: 120),
-            styleMask: [.titled],
-            backing: .buffered,
-            defer: false
-        )
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 380, height: 120), styleMask: [.titled], backing: .buffered, defer: false)
         panel.isReleasedWhenClosed = false
         panel.title = "正在检查更新…"
         let progress = NSProgressIndicator(frame: NSRect(x: 20, y: 65, width: 340, height: 20))
@@ -113,46 +123,11 @@ final class UpdateChecker: NSObject {
     }
 
     private func showUpdate(_ update: VerifiedUpdate, current: SemanticVersion) {
-        let alert = NSAlert()
-        alert.icon = NSApp.applicationIconImage
-        alert.messageText = "发现沙发电视新版本"
-        alert.informativeText = "沙发电视 \(update.version) 已发布，你正在使用 \(current)。"
-        if !update.notes.isEmpty { alert.accessoryView = releaseNotesView(update.notes) }
-        alert.addButton(withTitle: "打开下载页")
-        alert.addButton(withTitle: "稍后")
-        AppWindows.shared.present(alert) { response in
-            if response == .alertFirstButtonReturn { NSWorkspace.shared.open(update.releaseURL) }
-        }
-    }
-
-    private func releaseNotesView(_ notes: String) -> NSView {
-        let width: CGFloat = 500
-        let height: CGFloat = 220
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: width, height: height + 28))
-        let heading = NSTextField(labelWithString: "更新说明：")
-        heading.font = .boldSystemFont(ofSize: NSFont.systemFontSize)
-        heading.frame = NSRect(x: 0, y: height + 8, width: width, height: 20)
-        container.addSubview(heading)
-        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: width, height: height))
-        scroll.borderType = .bezelBorder
-        scroll.hasVerticalScroller = true
-        scroll.autohidesScrollers = true
-        let text = NSTextView(frame: NSRect(origin: .zero, size: scroll.contentSize))
-        text.isEditable = false
-        text.isRichText = false
-        text.font = .systemFont(ofSize: NSFont.systemFontSize)
-        text.textColor = .textColor
-        text.backgroundColor = .textBackgroundColor
-        text.textContainerInset = NSSize(width: 8, height: 6)
-        text.isVerticallyResizable = true
-        text.isHorizontallyResizable = false
-        text.autoresizingMask = [.width]
-        text.textContainer?.containerSize = NSSize(width: scroll.contentSize.width, height: .greatestFiniteMagnitude)
-        text.textContainer?.widthTracksTextView = true
-        text.string = notes
-        scroll.documentView = text
-        container.addSubview(scroll)
-        return container
+        let controller = UpdateWindowController(update: update, current: current)
+        controller.onClose = { [weak self] in self?.updateWindow = nil }
+        updateWindow = controller
+        controller.showWindow(nil)
+        controller.window?.makeKeyAndOrderFront(nil)
     }
 
     private func showMessage(_ title: String, detail: String) {
@@ -166,9 +141,6 @@ final class UpdateChecker: NSObject {
 
     private func userMessage(for error: Error) -> String {
         if let error = error as? UpdateManifestError { return error.localizedDescription }
-        if let error = error as? URLError, error.code == .badServerResponse {
-            return "暂时无法获取更新信息。首个 Release 发布前需要随安装包上传 update.json。"
-        }
         return "暂时无法连接更新服务，请检查网络后重试。"
     }
 }

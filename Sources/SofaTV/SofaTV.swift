@@ -706,7 +706,10 @@ struct ContentView: View {
         .ignoresSafeArea(.container, edges: .top)
         .background(MainWindowChrome(title: library.selected?.name ?? "沙发电视", onClose: library.stopPlayback).frame(width: 0, height: 0))
         .focusedSceneValue(\.channelLibrary, library)
-        .onAppear { programGuide.setChannels(library.channels) }
+        .onAppear {
+            programGuide.setChannels(library.channels)
+            UpdateChecker.shared.startAutomaticCheck { [weak library = library] in library?.selected != nil }
+        }
         .onChange(of: library.channels) { _, channels in programGuide.setChannels(channels) }
         .onDisappear { programGuide.stop() }
         .onChange(of: library.selected?.id) { _, selected in

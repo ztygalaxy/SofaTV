@@ -47,3 +47,4 @@ swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/Sof
 /private/tmp/sofatv-video-volume-check
 swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang Sources/SofaTV/PlaybackVolume.swift tests/PlaybackVolumeChecks.swift -o /private/tmp/sofatv-playback-volume-check
 /private/tmp/sofatv-playback-volume-check
+./scripts/test-updates.sh
