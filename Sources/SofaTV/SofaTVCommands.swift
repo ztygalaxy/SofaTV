@@ -29,6 +29,8 @@ struct SofaTVCommands: Commands {
         }
         CommandMenu("播放") {
             if let library { PlaybackMenu(library: library) }
+            Divider()
+            Button("节目预约…") { ProgramReminderWindow.show() }
         }
     }
     @MainActor private func showAbout() { AboutWindowController.shared.show() }

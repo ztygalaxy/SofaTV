@@ -1,7 +1,7 @@
 import AppKit
 
 @MainActor
-final class UpdateNotesView: NSScrollView {
+final class UpdateNotesView: AppScrollView {
     let visibleLineCount: Int
 
     init(notes: String, width: CGFloat) {
@@ -37,10 +37,6 @@ final class UpdateNotesView: NSScrollView {
         drawsBackground = true
         backgroundColor = .textBackgroundColor
         borderType = .noBorder
-        hasVerticalScroller = true
-        autohidesScrollers = true
-        scrollerStyle = .overlay
-        verticalScroller?.controlSize = .small
         text.setFrameSize(NSSize(width: width, height: documentHeight))
         documentView = text
         wantsLayer = true

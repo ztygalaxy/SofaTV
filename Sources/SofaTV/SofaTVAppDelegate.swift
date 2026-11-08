@@ -5,6 +5,17 @@ import AppKit
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSApplication.shared.appearance = NSAppearance(named: .darkAqua)
+        let reminders = ProgramReminderStore.shared
+        reminders.onWatch = { reminder in
+            let library = Library.shared
+            guard let channel = library.channels.first(where: { reminder.matches($0) }) else {
+                AppWindows.shared.showMessage("频道暂不可用", detail: "这个频道可能已被移除，请重新导入频道列表。")
+                return true
+            }
+            library.play(channel)
+            return true
+        }
+        reminders.start()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {

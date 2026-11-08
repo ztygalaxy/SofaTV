@@ -3,6 +3,11 @@ import AVKit
 import WebKit
 
 @MainActor final class Library: ObservableObject {
+    // Explicit arguments avoid Swift 6.1's module-emission crash when a global
+    // initializer evaluates actor-isolated default arguments.
+    static let shared: Library = Library(defaults: .standard, channelRepository: .shared, warmsChannels: true,
+                                         recoveryMonitor: nil, warmup: WebMediaWarmup(environment: WebMediaWarmupEnvironment(),
+                                             makeResolver: { WebMediaResolver(keepsVideoRunning: false) }))
     @Published var channels: [Channel] = []
     @Published private(set) var channelLists: [ChannelList] = []
     @Published var favorites: Set<String> = []
@@ -799,9 +804,10 @@ enum LibraryDeletion {
     }
 }
 struct ContentView: View {
-    @StateObject private var library = Library()
+    @StateObject private var library = Library.shared
     @StateObject private var ui = UIState()
-    @StateObject private var programGuide = ProgramGuideStore()
+    @StateObject private var programGuide = ProgramGuideStore(reminders: .shared)
+    @Environment(\.openWindow) private var openWindow
     @ViewState private var guidePreview = ProgramGuidePreview()
     @ViewState private var sidebarWidth: CGFloat
     private let minimumSidebarWidth: CGFloat = 294
@@ -999,6 +1005,7 @@ struct ContentView: View {
                 }
                 .frame(minWidth: minimumVideoWidth, maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.sofaBackground)
+                .background(AppToastVideoRegion())
                 .overlay(alignment: .leading) {
                     ProgramGuideOverlay(preview: guidePreview, store: programGuide, presentation: .embedded,
                                         playingChannel: library.catalogSelectedChannel)
@@ -1018,6 +1025,16 @@ struct ContentView: View {
         .background(MainWindowChrome(title: library.selected?.displayName ?? "沙发电视", onClose: { library.stopPlayback(restoreWindow: false) }).frame(width: 0, height: 0))
         .focusedSceneValue(\.channelLibrary, library)
         .onAppear {
+            ProgramReminderStore.shared.onActivate = {
+                NSApplication.shared.activate()
+                if let window = NSApp.windows.first(where: { $0 is VideoDetachedWindow && $0.isVisible }) {
+                    window.makeKeyAndOrderFront(nil)
+                } else if let window = MainWindowChrome.mainWindow {
+                    if window.isMiniaturized { window.deminiaturize(nil) }
+                    window.makeKeyAndOrderFront(nil)
+                } else { openWindow(id: "sofatv-main") }
+            }
+            ProgramReminderStore.shared.start()
             programGuide.setChannels(library.channels)
             library.startOnlineUpdates()
             UpdateChecker.shared.startAutomaticCheck { [weak library = library] in library?.selected != nil }
@@ -1041,7 +1058,7 @@ struct ContentView: View {
         UserDefaults.standard.set(["zh-Hans"], forKey: "AppleLanguages")
     }
     var body: some Scene {
-        WindowGroup("沙发电视") {
+        WindowGroup("沙发电视", id: "sofatv-main") {
             ContentView().frame(minWidth: 900, minHeight: 560)
                 .environment(\.locale, Locale(identifier: "zh_Hans_CN"))
                 .preferredColorScheme(.dark)

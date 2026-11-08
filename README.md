@@ -28,15 +28,16 @@
 ## 界面预览
 
 <p align="center">
-  <a href="docs/images/program-guide-fullscreen-demo.gif"><img src="docs/images/program-guide-fullscreen-demo.gif" width="960" alt="全屏下从山东卫视切换到宁夏卫视节目单的悬停操作演示"></a>
+  <a href="docs/images/app-fullscreen.jpg"><img src="docs/images/app-fullscreen.jpg" width="960" alt="全屏播放、频道节目单与节目预约"></a>
 </p>
 <table>
   <tr>
-    <td width="20%" align="center"><a href="docs/images/app-idle.png"><img src="docs/images/app-idle.png" width="192" alt="沙发电视启动页面"></a></td>
-    <td width="20%" align="center"><a href="docs/images/app-playing.png"><img src="docs/images/app-playing.png" width="192" alt="沙发电视窗口播放与节目单"></a></td>
-    <td width="20%" align="center"><a href="docs/images/app-fullscreen.png"><img src="docs/images/app-fullscreen.png" width="192" alt="沙发电视全屏播放与节目单"></a></td>
-    <td width="20%" align="center"><a href="docs/images/app-mini-player.png"><img src="docs/images/app-mini-player.png" width="192" alt="沙发电视桌面小窗模式"></a></td>
-    <td width="20%" align="center"><a href="docs/images/app-channel-manager.png"><img src="docs/images/app-channel-manager.png" width="192" alt="编辑频道来源页面"></a></td>
+    <td width="16.66%" align="center"><a href="docs/images/app-idle.png"><img src="docs/images/app-idle.png" width="160" alt="沙发电视启动页面"></a></td>
+    <td width="16.66%" align="center"><a href="docs/images/app-playing.png"><img src="docs/images/app-playing.png" width="160" alt="沙发电视窗口播放与节目单"></a></td>
+    <td width="16.66%" align="center"><a href="docs/images/app-fullscreen.jpg"><img src="docs/images/app-fullscreen.jpg" width="160" alt="沙发电视全屏播放与节目单"></a></td>
+    <td width="16.66%" align="center"><a href="docs/images/app-mini-player.png"><img src="docs/images/app-mini-player.png" width="160" alt="沙发电视桌面小窗模式"></a></td>
+    <td width="16.66%" align="center"><a href="docs/images/app-channel-manager.png"><img src="docs/images/app-channel-manager.png" width="160" alt="编辑频道来源页面"></a></td>
+    <td width="16.66%" align="center"><a href="docs/images/app-program-reservations.png"><img src="docs/images/app-program-reservations.png" width="160" alt="节目单中预约节目并显示预约成功提示"></a></td>
   </tr>
   <tr>
     <td align="center"><strong>频道列表</strong><br><sub>搜索、收藏，选择想看的频道</sub></td>
@@ -44,6 +45,7 @@
     <td align="center"><strong>全屏与节目单</strong><br><sub>滑出频道列表，悬停浏览排期</sub></td>
     <td align="center"><strong>桌面小窗模式</strong><br><sub>置顶播放，自由拖动与缩放</sub></td>
     <td align="center"><strong>编辑频道来源</strong><br><sub>搜索频道，管理频道与播放线路</sub></td>
+    <td align="center"><strong>节目预约和管理</strong><br><sub>铃铛预约节目，统一查看与取消</sub></td>
   </tr>
 </table>
 
@@ -64,6 +66,7 @@
 | --- | --- |
 | 原生播放 | 支持清晰度选择、直播延迟模式和画面拉伸，提供网页来源的解析与播放支持。 |
 | 节目单预览 | 悬停浏览当天节目单，自动定位当前时段；查看其他频道的排期时，直播继续播放。 |
+| 节目预约 | 点击节目旁的铃铛，在开播前 10 秒收到系统通知；点击通知切台。 |
 | 全屏选台 | 从画面左侧唤出频道列表，搜索、收藏、预览节目单或换台。 |
 | 置顶小窗 | 一键切换桌面小窗，自由移动、按比例缩放，随时返回主窗口。 |
 | 频道来源 | 导入本地或在线 M3U / TXT 列表，合并重复频道，按来源查看和删除频道、线路。 |
@@ -104,6 +107,16 @@
 正在观看的频道以青色标记“当前节目”；预览其他频道时，以白色标记“正在播出”。
 
 当前时段缺少排期时，频道行会显示当天的下一档节目，节目单同步定位、高亮并标注“即将播出”；到开播时间后自动切换为正常的当前节目标记。
+
+### 节目预约
+
+点击节目单中未开播节目旁的铃铛，即可添加开播提醒。首次添加时会申请系统通知权限，启动应用不会弹出权限请求。
+
+节目开始前 10 秒，使用 macOS 系统通知，点击通知切换到对应频道，应用运行时会在提醒触发 20 秒后移除通知。
+
+在“播放 → 节目预约…”或节目单底部的“节目预约…”中查看、取消提醒，也可以直接点击“观看”。
+
+通知显示受系统通知设置、专注模式及电脑睡眠状态影响；未收到提醒时，可在“系统设置 → 通知”中检查沙发电视的权限。
 
 ### 全屏与置顶小窗
 
@@ -227,7 +240,7 @@ TXT 使用“频道名,地址”，通过 `分组名,#genre#` 切换分组：
 
 ## 数据与隐私
 
-频道列表、收藏、上一观看频道记录、音量、静音状态、自定义名称与分组、排序，以及窗口和侧栏设置都保存在本机，不上传到项目服务器。
+频道列表、收藏、上一观看频道记录、节目预约、音量、静音状态、自定义名称与分组、排序，以及窗口和侧栏设置都保存在本机，不上传到项目服务器。
 
 网页解析使用临时网站数据，播放所需的 Cookie 仅在当前运行期间使用，不跨启动保留。
 

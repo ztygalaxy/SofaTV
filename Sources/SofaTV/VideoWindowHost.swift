@@ -14,6 +14,7 @@ class VideoWindowHost: NSView, NSWindowDelegate {
     private let makeWindow: (NSRect, VideoPresentation) -> VideoDetachedWindow
     private var transitioning = false
     private var transitionID = UUID()
+    private var presentationOptionsBeforeFullscreen: NSApplication.PresentationOptions?
 
     init(content: NSView, activateApplication: @escaping () -> Void = { NSApplication.shared.activate() }, makeWindow: @escaping (NSRect, VideoPresentation) -> VideoDetachedWindow = { VideoDetachedWindow(frame: $0, presentation: $1) }) {
         self.content = content
@@ -49,6 +50,7 @@ class VideoWindowHost: NSView, NSWindowDelegate {
               let screen = detachedWindow?.screen ?? window?.screen ?? NSScreen.main,
               let initial = detachedWindow?.frame ?? embeddedScreenFrame() else { return }
         let previous = detachedWindow
+        configureSystemPresentation(for: target)
         let videoWindow = makeWindow(initial, target)
         videoWindow.delegate = self
         videoWindow.onExit = { [weak self] in
@@ -89,6 +91,7 @@ class VideoWindowHost: NSView, NSWindowDelegate {
         videoWindow.contentView = nil
         detachedWindow = nil
         presentation = .embedded
+        configureSystemPresentation(for: .embedded)
         addSubview(content)
         content.frame = bounds
         onPresentationChange?(.embedded)
@@ -104,6 +107,19 @@ class VideoWindowHost: NSView, NSWindowDelegate {
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         restoreEmbedded(animated: false)
         return false
+    }
+
+    private func configureSystemPresentation(for presentation: VideoPresentation) {
+        if presentation == .fullscreen {
+            if presentationOptionsBeforeFullscreen == nil { presentationOptionsBeforeFullscreen = NSApp.presentationOptions }
+            var options = NSApp.presentationOptions
+            options.subtract([.hideDock, .hideMenuBar])
+            options.formUnion([.autoHideDock, .autoHideMenuBar])
+            NSApp.presentationOptions = options
+        } else if let previous = presentationOptionsBeforeFullscreen {
+            NSApp.presentationOptions = previous
+            presentationOptionsBeforeFullscreen = nil
+        }
     }
 
     private final func animate(_ videoWindow: VideoDetachedWindow, to frame: NSRect, animated: Bool, completion: @escaping @MainActor @Sendable () -> Void) {
@@ -143,7 +159,9 @@ class VideoDetachedWindow: NSPanel {
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         hidesOnDeactivate = false
         isFloatingPanel = mini
-        level = mini ? .floating : NSWindow.Level(rawValue: NSWindow.Level.mainMenu.rawValue + 1)
+        // Fullscreen uses the system's menu/Dock presentation options. Raising
+        // the video above the menu bar can cover system notification banners.
+        level = mini ? .floating : .normal
         becomesKeyOnlyIfNeeded = mini
         isMovable = mini
         isMovableByWindowBackground = mini

@@ -19,7 +19,9 @@ import AVKit
 
 @main struct VideoWindowHostChecks {
     @MainActor static func main() async throws {
-        _ = NSApplication.shared
+        NSApplication.shared.setActivationPolicy(.prohibited)
+        let initialOptions = NSApp.presentationOptions
+        defer { NSApp.presentationOptions = initialOptions }
         let main = EmbeddedWindow(contentRect: NSRect(x: 40, y: 40, width: 900, height: 560), styleMask: [.titled], backing: .buffered, defer: false)
         main.isReleasedWhenClosed = false
         let content = NSView()
@@ -68,11 +70,13 @@ import AVKit
         host.toggleFullscreen(animated: false)
         precondition(host.presentation == .fullscreen && content.window === host.detachedWindow)
         precondition(host.detachedWindow !== firstMini && created[0].closedCount == 1)
-        precondition(host.detachedWindow!.level.rawValue > NSWindow.Level.mainMenu.rawValue)
+        precondition(host.detachedWindow!.level == .normal, "Fullscreen must leave system notifications above the video")
+        precondition(NSApp.presentationOptions.contains([.autoHideDock, .autoHideMenuBar]))
         checkPlaybackIdentity()
 
         host.toggleMini(animated: false)
         precondition(host.presentation == .mini && created[1].closedCount == 1)
+        precondition(NSApp.presentationOptions == initialOptions, "Leaving fullscreen restores menu and Dock presentation")
         checkPlaybackIdentity()
         returnEvents.removeAll()
         host.toggleMini(animated: false)
@@ -86,6 +90,7 @@ import AVKit
             host.toggleMini(animated: false)
             host.toggleFullscreen(animated: false)
             host.restoreEmbedded(animated: false)
+            precondition(NSApp.presentationOptions == initialOptions)
             checkPlaybackIdentity()
         }
 

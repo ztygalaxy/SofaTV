@@ -158,9 +158,8 @@ final class AboutWindowController: NSWindowController {
         window.title = "开源许可"
         window.minSize = NSSize(width: 420, height: 300)
 
-        let scroll = NSScrollView(frame: window.contentView?.bounds ?? .zero)
+        let scroll = AppScrollView(frame: window.contentView?.bounds ?? .zero)
         scroll.autoresizingMask = [.width, .height]
-        scroll.hasVerticalScroller = true
         let text = NSTextView(frame: NSRect(origin: .zero, size: scroll.contentSize))
         text.isEditable = false
         text.isRichText = false

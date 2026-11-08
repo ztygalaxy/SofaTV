@@ -14,6 +14,6 @@ swiftc -swift-version 6 -module-cache-path /private/tmp/sofatv-clang \
   -I "$test_dir" -L "$test_dir" -lUpdateSupport -Xlinker -rpath -Xlinker "$test_dir" \
   Sources/SofaTV/UpdateManifest.swift Sources/SofaTV/AutomaticUpdateCheck.swift \
   Sources/SofaTV/UpdateDownload.swift Sources/SofaTV/UpdateInstaller.swift \
-  Sources/SofaTV/UpdateNotesMarkdown.swift Sources/SofaTV/UpdateWindowController.swift Sources/SofaTV/AppWindows.swift \
+  Sources/SofaTV/UpdateNotesMarkdown.swift Sources/SofaTV/AppScrollView.swift Sources/SofaTV/UpdateWindowController.swift Sources/SofaTV/AppWindows.swift \
   tests/Updates/*.swift -o "$test_dir/checks"
 "$test_dir/checks" "$test_dir/SofaTVUpdater"

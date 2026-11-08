@@ -134,24 +134,13 @@ struct ChannelListScrollStyle: NSViewRepresentable {
             }
             preserveOverlay(in: scroll)
             if !scroll.autohidesScrollers { scroll.autohidesScrollers = true }
-            pinnedHeader.attach(to: scroll)
+            if pinnedHeader.hasGroups { pinnedHeader.attach(to: scroll) }
+            else { pinnedHeader.detach() }
         }
     }
 }
 
-/// Draw only a slim thumb; AppKit retains scrolling, dragging and overlay fading.
-final class ChannelListScroller: NSScroller {
-    override class var isCompatibleWithOverlayScrollers: Bool { true }
-    override class func scrollerWidth(for controlSize: NSControl.ControlSize, scrollerStyle: NSScroller.Style) -> CGFloat { 10 }
-    override func drawKnobSlot(in slotRect: NSRect, highlight flag: Bool) {}
-    override func drawKnob() {
-        var thumb = rect(for: .knob)
-        guard thumb.width > 0, thumb.height > 0 else { return }
-        thumb.origin.x = bounds.maxX - 8
-        thumb.size.width = 5
-        thumb = thumb.insetBy(dx: 0, dy: 1)
-        guard thumb.height > 0 else { return }
-        NSColor.labelColor.withAlphaComponent(hitPart == .knob ? 0.26 : 0.14).setFill()
-        NSBezierPath(roundedRect: thumb, xRadius: 2.5, yRadius: 2.5).fill()
-    }
+extension View {
+    /// Reuse the channel/guide scrollbar without adding group headers.
+    func appScrollStyle() -> some View { background(ChannelListScrollStyle()) }
 }

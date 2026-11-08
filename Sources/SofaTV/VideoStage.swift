@@ -454,6 +454,7 @@ struct VideoStage: NSViewRepresentable {
         }
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
+            AppWindows.shared.playbackWindowChanged(self, fullscreen: isVideoFullscreen)
             updateControlAvailability()
             if window == nil {
                 miniPlayerButton.cancelTracking()
@@ -732,6 +733,7 @@ struct VideoStage: NSViewRepresentable {
             label.frame = NSRect(x: 20, y: bounds.midY - 32, width: max(0, bounds.width - 40), height: 24)
             volumeBackdrop.refreshCursorRects(); topBackdrop.refreshCursorRects()
             updateCursorRegions()
+            AppWindows.shared.playbackWindowChanged(self, fullscreen: isVideoFullscreen)
         }
     }
 }

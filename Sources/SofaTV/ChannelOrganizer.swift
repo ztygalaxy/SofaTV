@@ -130,6 +130,7 @@ struct ChannelOrganizer: View {
             }
         }
         .listStyle(.plain).scrollContentBackground(.hidden)
+        .appScrollStyle()
         .overlay {
             if library.channels.isEmpty { SidebarEmptyView("暂无频道", systemImage: "tv", description: "请从‘频道’菜单导入频道列表") }
         }
@@ -159,6 +160,7 @@ struct ChannelOrganizer: View {
             }
         }
         .listStyle(.plain).scrollContentBackground(.hidden)
+        .appScrollStyle()
     }
 }
 

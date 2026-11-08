@@ -46,9 +46,13 @@ private struct ProgramGuideDrawer: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ProgramGuideScrollView(programs: programs, now: now, fullscreen: fullscreen,
-                                       isPlayingChannel: isPlayingChannel, revision: store.scheduleRevision)
+                                       isPlayingChannel: isPlayingChannel, revision: store.scheduleRevision,
+                                       channel: channel, reminders: store.reminders)
             }
             HStack {
+                if let reminders = store.reminders {
+                    Button("节目预约…") { ProgramReminderWindow.show(reminders) }.buttonStyle(.plain)
+                }
                 Spacer()
                 Button("回到当前", action: returnToCurrent)
                     .buttonStyle(.plain)
@@ -73,6 +77,8 @@ private struct ProgramGuideRow: View {
     let fullscreen: Bool
     let isPlayingChannel: Bool
     let highlight: ProgramGuide.Schedule.Highlight?
+    let channel: Channel
+    let reminders: ProgramReminderStore?
     private var scale: CGFloat { fullscreen ? 1.3 : 1 }
     private var currentHighlight: Color { isPlayingChannel ? .sofaAccent : .white }
 
@@ -87,8 +93,12 @@ private struct ProgramGuideRow: View {
                     Text(highlight.badge(isPlayingChannel: isPlayingChannel)).foregroundStyle(currentHighlight)
                         .font(.system(size: 10 * scale, weight: .medium))
                 }
+                if let reminders {
+                    ProgramReminderButton(channel: channel, program: program, now: now, scale: scale, store: reminders)
+                }
             }
             .font(.system(size: 11 * scale))
+            .frame(minHeight: reminders == nil ? nil : 24 * scale)
             Text(program.title).font(.system(size: 14 * scale, weight: highlighted ? .semibold : .regular))
                 .foregroundStyle(past ? .secondary : .primary).fixedSize(horizontal: false, vertical: true)
         }
@@ -96,7 +106,7 @@ private struct ProgramGuideRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.white.opacity(highlighted ? (fullscreen ? 0.07 : 0.10) : 0))
         .overlay(alignment: .leading) { if highlighted { currentHighlight.frame(width: 3) } }
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
     }
 }
 
@@ -106,11 +116,13 @@ private struct ProgramGuideScrollView: NSViewRepresentable {
     let fullscreen: Bool
     let isPlayingChannel: Bool
     let revision: Int
+    let channel: Channel
+    let reminders: ProgramReminderStore?
 
     func makeNSView(context: Context) -> ScheduleScrollView { ScheduleScrollView() }
     func updateNSView(_ scroll: ScheduleScrollView, context: Context) { scroll.update(self) }
 
-    final class ScheduleScrollView: NSScrollView {
+    final class ScheduleScrollView: AppScrollView {
         private final class Document: NSView { override var isFlipped: Bool { true } }
         private let rows = Document()
         private var hosts: [NSHostingView<AnyView>] = []
@@ -122,20 +134,10 @@ private struct ProgramGuideScrollView: NSViewRepresentable {
         init() {
             super.init(frame: .zero)
             drawsBackground = false; borderType = .noBorder
-            hasVerticalScroller = true; hasHorizontalScroller = false
-            verticalScroller = ChannelListScroller()
-            verticalScroller?.controlSize = .small
             horizontalScrollElasticity = .none
             documentView = rows
-            scrollerStyle = .overlay; autohidesScrollers = true
         }
         required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-
-        // This pane owns its floating thumb; it never reserves a legacy scrollbar gutter.
-        override var scrollerStyle: NSScroller.Style {
-            get { super.scrollerStyle }
-            set { super.scrollerStyle = .overlay }
-        }
 
         func update(_ value: ProgramGuideScrollView) {
             if let previous = configuration {
@@ -163,7 +165,8 @@ private struct ProgramGuideScrollView: NSViewRepresentable {
             for (host, program) in zip(hosts, configuration.programs) {
                 host.rootView = AnyView(
                     ProgramGuideRow(program: program, now: configuration.now, fullscreen: configuration.fullscreen,
-                                    isPlayingChannel: configuration.isPlayingChannel, highlight: highlight)
+                                    isPlayingChannel: configuration.isPlayingChannel, highlight: highlight,
+                                    channel: configuration.channel, reminders: configuration.reminders)
                         .frame(width: size.width)
                         .fixedSize(horizontal: false, vertical: true)
                         .preferredColorScheme(.dark)

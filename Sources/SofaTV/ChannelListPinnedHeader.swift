@@ -10,6 +10,7 @@ struct ChannelListGroup: Equatable {
 /// Float the existing header artwork above the flat List, avoiding native section chrome.
 @MainActor final class ChannelListPinnedHeader: NSObject {
     private var groups: [ChannelListGroup] = []
+    var hasGroups: Bool { !groups.isEmpty }
     private var makeHeader: ((String) -> AnyView)?
     private weak var scrollView: NSScrollView?
     private weak var table: NSTableView?

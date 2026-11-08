@@ -79,6 +79,7 @@ struct ChannelListManager: View {
                 }
                 .frame(height: Self.rowHeight * CGFloat(min(Self.maximumVisibleSources, library.channelLists.count)))
                 .scrollIndicators(library.channelLists.count > Self.maximumVisibleSources ? .automatic : .hidden)
+                .appScrollStyle()
                 .background(.quaternary.opacity(0.25), in: RoundedRectangle(cornerRadius: 8))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             }
@@ -149,6 +150,7 @@ struct ChannelListDetail: View {
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .appScrollStyle()
                 .background(.quaternary.opacity(0.2), in: RoundedRectangle(cornerRadius: 8))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .overlay {

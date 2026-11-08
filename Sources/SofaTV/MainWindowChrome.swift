@@ -3,6 +3,7 @@ import AppKit
 
 /// Retain standard window buttons over the sidebar without reserving a title/toolbar strip.
 struct MainWindowChrome: NSViewRepresentable {
+    @MainActor static weak var mainWindow: NSWindow?
     let title: String
     let onClose: () -> Void
     func makeNSView(context: Context) -> ChromeView {
@@ -25,6 +26,7 @@ struct MainWindowChrome: NSViewRepresentable {
         func configureWindow() {
             guard let window else { return }
             let firstBinding = configuredWindow !== window
+            MainWindowChrome.mainWindow = window
             configureFramePersistence(for: window)
             if window.title != windowTitle { window.title = windowTitle }
             // Unrelated view updates should not make AppKit rebuild the window chrome.
@@ -62,7 +64,10 @@ struct MainWindowChrome: NSViewRepresentable {
         @objc private func storeWindowFrame(_ notification: Notification) {
             guard let window = notification.object as? NSWindow, window === configuredWindow else { return }
             UserDefaults.standard.set(NSStringFromRect(window.frame), forKey: Self.framePreferenceKey)
-            if notification.name == NSWindow.willCloseNotification { onClose?() }
+            if notification.name == NSWindow.willCloseNotification {
+                if MainWindowChrome.mainWindow === window { MainWindowChrome.mainWindow = nil }
+                onClose?()
+            }
         }
     }
 }

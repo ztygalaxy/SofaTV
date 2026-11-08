@@ -14,6 +14,7 @@ import Combine
     private var loadID: UUID?
     private var tickTask: Task<Void, Never>?
     private var running = false
+    let reminders: ProgramReminderStore?
     private let now: @MainActor () -> Date
     private let cachedGuide: @Sendable () async -> ProgramGuideCacheEntry?
     private let refreshGuide: @Sendable () async throws -> ProgramGuideCacheEntry
@@ -22,8 +23,9 @@ import Combine
     init(now: @escaping @MainActor () -> Date = { Date() },
          cachedGuide: @escaping @Sendable () async -> ProgramGuideCacheEntry? = { await ProgramGuideStore.readSharedCache() },
          refreshGuide: @escaping @Sendable () async throws -> ProgramGuideCacheEntry = { try await ProgramGuideRepository.shared.refresh() },
-         observeSystemEvents: Bool = true) {
+         observeSystemEvents: Bool = true, reminders: ProgramReminderStore? = nil) {
         self.now = now; self.cachedGuide = cachedGuide; self.refreshGuide = refreshGuide
+        self.reminders = reminders
         wakeCenter = observeSystemEvents ? NSWorkspace.shared.notificationCenter : nil
         super.init()
         if observeSystemEvents {
@@ -49,6 +51,7 @@ import Combine
         updateTitles()
         refreshIfNeeded()
         scheduleTick()
+        synchronizeReminders()
     }
     func stop() {
         running = false
@@ -58,6 +61,10 @@ import Combine
     @objc func resume() {
         guard running else { return }
         updateTitles(); refreshIfNeeded(); scheduleTick()
+        reminders?.refresh()
+    }
+    private func synchronizeReminders() {
+        reminders?.reconcile(channels: channels, programs: { guide?.schedule(channel: $0).programs ?? [] })
     }
     func schedule(for channel: Channel) -> ProgramGuide.Schedule {
         guide?.schedule(channel: channel) ?? ProgramGuide.Schedule(programs: [])
@@ -102,13 +109,13 @@ import Combine
     }
     private func restore(_ entry: ProgramGuideCacheEntry?, for token: UUID) -> Bool {
         guard loadID == token else { return false }
-        if let entry { guide = entry.guide; scheduleRevision += 1 }
+        if let entry { guide = entry.guide; scheduleRevision += 1; synchronizeReminders() }
         if running { updateTitles(); scheduleTick() }
         return true
     }
     private func finish(_ entry: ProgramGuideCacheEntry?, for token: UUID) {
         guard loadID == token else { return }
-        if let entry { guide = entry.guide; scheduleRevision += 1 }
+        if let entry { guide = entry.guide; scheduleRevision += 1; synchronizeReminders() }
         // Successful snapshots refresh every four hours; network failures keep a short retry cooldown.
         let interval = entry == nil ? 10 * 60 : ProgramGuideRepository.refreshInterval
         nextRefreshAt = now().addingTimeInterval(interval)
