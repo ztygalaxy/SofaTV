@@ -10,12 +10,14 @@ struct RenderReadmeImages {
         let output = root.appendingPathComponent("docs/images", isDirectory: true)
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
 
-        guard let artwork = NSImage(contentsOf: root.appendingPathComponent("Assets/AppIcon.svg")),
+        // Use the build output so README previews match the packaged Dock icon.
+        // Run scripts/build-icon.swift (or scripts/build-app.sh) before this renderer.
+        guard let baseIcon = NSImage(contentsOf: root.appendingPathComponent(".build/AppIcon.icns")),
               let channelLogo = NSImage(contentsOf: root.appendingPathComponent("Assets/ChannelLogos/浙江卫视.png")) else {
-            throw NSError(domain: "SofaTV.ReadmeImages", code: 1, userInfo: [NSLocalizedDescriptionKey: "Missing icon artwork"])
+            throw NSError(domain: "SofaTV.ReadmeImages", code: 1, userInfo: [NSLocalizedDescriptionKey: "Missing built AppIcon.icns or channel logo; run scripts/build-icon.swift first"])
         }
 
-        let baseIcon = renderBaseIcon(artwork: artwork, side: 512)
+        baseIcon.size = NSSize(width: 512, height: 512)
         let playingView = DockIconBadgeView(
             frame: NSRect(x: 0, y: 0, width: 512, height: 512),
             baseImage: baseIcon,
@@ -30,19 +32,6 @@ struct RenderReadmeImages {
 
         try writePreview(icon: baseIcon, to: output.appendingPathComponent("dock-idle.png"))
         try writePreview(icon: playingIcon, to: output.appendingPathComponent("dock-playing.png"))
-    }
-
-    @MainActor
-    private static func renderBaseIcon(artwork: NSImage, side: Int) -> NSImage {
-        let image = NSImage(size: NSSize(width: side, height: side))
-        image.lockFocus()
-        let length = CGFloat(side)
-        let tile = NSRect(x: length * 0.10, y: length * 0.10, width: length * 0.80, height: length * 0.80)
-        NSColor(srgbRed: 243 / 255, green: 230 / 255, blue: 219 / 255, alpha: 1).setFill()
-        NSBezierPath(roundedRect: tile, xRadius: length * 0.18, yRadius: length * 0.18).fill()
-        artwork.draw(in: NSRect(x: length * 0.20, y: length * 0.20, width: length * 0.60, height: length * 0.60))
-        image.unlockFocus()
-        return image
     }
 
     @MainActor
@@ -64,7 +53,7 @@ struct RenderReadmeImages {
         }
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
-        NSColor(srgbRed: 58 / 255, green: 61 / 255, blue: 67 / 255, alpha: 1).setFill()
+        NSColor(srgbRed: 0.93, green: 0.94, blue: 0.95, alpha: 1).setFill()
         NSBezierPath(rect: NSRect(x: 0, y: 0, width: side, height: side)).fill()
         icon.draw(in: NSRect(x: 32, y: 32, width: 576, height: 576), from: .zero, operation: .sourceOver, fraction: 1)
         NSGraphicsContext.restoreGraphicsState()
