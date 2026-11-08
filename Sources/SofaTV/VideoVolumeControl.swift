@@ -152,6 +152,7 @@ final class VideoVolumeControl: NSView {
         var onTrackingChanged: ((Bool) -> Void)?
         var onScroll: ((NSEvent) -> Void)?
         private var tracking = false
+        private var hovering = false
         private var icon: NSImage?
         private var pointerTrackingArea: NSTrackingArea?
         private static var icons: [String: NSImage] = [:]
@@ -167,6 +168,14 @@ final class VideoVolumeControl: NSView {
         override var acceptsFirstResponder: Bool { false }
         override var mouseDownCanMoveWindow: Bool { false }
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+        override var isEnabled: Bool {
+            didSet {
+                guard oldValue != isEnabled else { return }
+                if !isEnabled { cancelTracking() }
+                needsDisplay = true
+                window?.invalidateCursorRects(for: self)
+            }
+        }
 
         func setSymbol(_ name: String, rotation: CGFloat = 0) {
             let key = "\(name):\(rotation)"
@@ -239,6 +248,10 @@ final class VideoVolumeControl: NSView {
             return NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
         }
         override func draw(_ dirtyRect: NSRect) {
+            if hovering && isEnabled {
+                NSColor.white.withAlphaComponent(tracking ? 0.18 : 0.10).setFill()
+                NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 6, yRadius: 6).fill()
+            }
             guard let icon else { return }
             let scale = Layout.speakerVisibleWidth / max(1, max(icon.size.width, icon.size.height))
             let width = icon.size.width * scale
@@ -249,20 +262,28 @@ final class VideoVolumeControl: NSView {
         override func mouseDown(with event: NSEvent) {
             guard isEnabled else { return }
             onPointerActivity?()
+            hovering = true; needsDisplay = true
             if !tracking { tracking = true; onTrackingChanged?(true) }
         }
-        override func mouseDragged(with event: NSEvent) { if tracking { onPointerActivity?() } }
+        override func mouseDragged(with event: NSEvent) {
+            if tracking {
+                hovering = bounds.contains(convert(event.locationInWindow, from: nil)); needsDisplay = true
+                onPointerActivity?()
+            }
+        }
         override func mouseUp(with event: NSEvent) {
             guard tracking else { return }
             onPointerActivity?()
-            let activate = isEnabled && bounds.contains(convert(event.locationInWindow, from: nil))
+            let activate = isEnabled && !isHiddenOrHasHiddenAncestor && bounds.contains(convert(event.locationInWindow, from: nil))
             cancelTracking()
             if activate { sendAction(action, to: target) }
         }
         func cancelTracking() {
             guard tracking else { return }
-            tracking = false; onTrackingChanged?(false)
+            tracking = false; needsDisplay = true; onTrackingChanged?(false)
         }
+        override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); if window == nil { cancelTracking(); hovering = false } }
+        override func viewDidHide() { super.viewDidHide(); cancelTracking(); hovering = false }
         override func rightMouseDown(with event: NSEvent) { onPointerActivity?() }
         override func rightMouseUp(with event: NSEvent) {}
         override func scrollWheel(with event: NSEvent) { onPointerActivity?(); onScroll?(event) }
@@ -272,9 +293,10 @@ final class VideoVolumeControl: NSView {
             let area = NSTrackingArea(rect: .zero, options: [.activeAlways, .inVisibleRect, .mouseEnteredAndExited, .mouseMoved], owner: self)
             addTrackingArea(area); pointerTrackingArea = area
         }
-        override func resetCursorRects() { addCursorRect(visibleRect, cursor: .pointingHand) }
-        override func mouseEntered(with event: NSEvent) { onPointerActivity?() }
+        override func resetCursorRects() { addCursorRect(visibleRect, cursor: isEnabled ? .pointingHand : .arrow) }
+        override func mouseEntered(with event: NSEvent) { hovering = true; needsDisplay = true; onPointerActivity?() }
         override func mouseMoved(with event: NSEvent) { onPointerActivity?() }
+        override func mouseExited(with event: NSEvent) { hovering = false; needsDisplay = true }
     }
 
     /// Draw using actual glyph bounds, avoiding NSTextField's invisible cell padding.
@@ -383,7 +405,7 @@ final class VideoVolumeControl: NSView {
             let area = NSTrackingArea(rect: .zero, options: [.activeAlways, .inVisibleRect, .mouseEnteredAndExited, .mouseMoved], owner: self)
             addTrackingArea(area); pointerTrackingArea = area
         }
-        override func resetCursorRects() { addCursorRect(visibleRect, cursor: .pointingHand) }
+        override func resetCursorRects() { addCursorRect(visibleRect, cursor: .arrow) }
         override func mouseEntered(with event: NSEvent) { onPointerActivity?() }
         override func mouseMoved(with event: NSEvent) { onPointerActivity?() }
         override func draw(_ dirtyRect: NSRect) {

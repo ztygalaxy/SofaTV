@@ -1,7 +1,7 @@
 import AppKit
 import Combine
 
-/// Publishes changed current programmes independently of playback and channel loading.
+/// Publishes current or upcoming programmes independently of playback and channel loading.
 @MainActor final class ProgramGuideStore: NSObject, ObservableObject {
     @Published private(set) var titles: [String: String] = [:]
     @Published private(set) var scheduleRevision = 0
@@ -67,8 +67,8 @@ import Combine
         var current: [String: String] = [:]
         if let guide {
             for channel in channels {
-                if let program = guide.currentProgram(channel: channel, at: at) {
-                    current[channel.id] = program.subtitle()
+                if let highlight = guide.highlightedProgram(channel: channel, at: at) {
+                    current[channel.id] = highlight.subtitle()
                 }
             }
         }

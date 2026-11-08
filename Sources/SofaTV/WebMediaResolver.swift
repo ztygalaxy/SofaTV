@@ -8,7 +8,7 @@ struct ResolvedWebMedia: Sendable {
 }
 
 /// Keeps a real, window-attached WebKit session behind the opaque native player.
-/// No page UI is exposed and its media is always muted.
+/// Only the selected foreground video may use the app's current audio level.
 @MainActor final class WebMediaResolver: NSObject, ObservableObject, WKScriptMessageHandler, WKNavigationDelegate {
     private(set) var cmgState: CmgSessionState?
     private var lastMedia: String?
@@ -71,6 +71,7 @@ struct ResolvedWebMedia: Sendable {
             injectionTime: .atDocumentStart,
             forMainFrameOnly: false
         ))
+        configuration.userContentController.addUserScript(WKUserScript(source: WebMediaAudio.script, injectionTime: .atDocumentStart, forMainFrameOnly: false))
         configuration.userContentController.add(WeakMediaHandler(self), name: "media")
         configuration.userContentController.addUserScript(WKUserScript(source: Self.script, injectionTime: .atDocumentStart, forMainFrameOnly: false))
         webView.navigationDelegate = self

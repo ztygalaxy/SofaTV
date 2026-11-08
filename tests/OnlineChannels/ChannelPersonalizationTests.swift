@@ -107,12 +107,12 @@ struct ChannelPersonalizationTests {
         let playing = app.selected
         app.refreshOnlineChannels(); try await settle(app)
         let refreshed = try #require(app.channels.first { $0.identity == a.identity })
-        #expect(refreshed.id == updated.id && refreshed.displayName == "我的新闻" && refreshed.displayGroup == "常看")
+        #expect(refreshed.url == updated.url && refreshed.id == a.id && refreshed.displayName == "我的新闻" && refreshed.displayGroup == "常看")
         #expect(app.channels.first?.identity == c.identity)
         #expect(app.favorites.contains(refreshed.id))
         #expect(app.personalization.volumes[refreshed.preferenceKey] == 0.7)
         #expect(app.selected?.sources == playing?.sources, "Updating metadata must preserve the active playback snapshot")
-        #expect(app.catalogSelectedChannel?.id == updated.id, "Guide navigation should still target the updated catalogue row")
+        #expect(app.catalogSelectedChannel?.sources == updated.sources, "Guide navigation should still target the updated catalogue row")
         await source.configure(playlist([b, c])); app.refreshOnlineChannels(); try await settle(app)
         #expect(app.personalization.favoriteKeys.contains(a.preferenceKey))
         await source.configure(playlist([updated, b, c])); app.refreshOnlineChannels(); try await settle(app)
@@ -224,7 +224,7 @@ struct ChannelPersonalizationTests {
         app.selected = a; app.videoVisible = true; app.setVolume(0.05)
         let stage = VideoStage.Stage(library: app)
         try await capture(stage, size: NSSize(width: 900, height: 506), to: folder.appendingPathComponent("controls.png")) {
-            for view in stage.subviews where view is VideoVolumeControl || view is VideoVolumeControl.SymbolButton { view.isHidden = false }
+            for view in playbackControlViews(in: stage) { view.isHidden = false }
         }
         app.stopPlayback()
     }

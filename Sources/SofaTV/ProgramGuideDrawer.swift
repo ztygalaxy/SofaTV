@@ -72,29 +72,30 @@ private struct ProgramGuideRow: View {
     let now: Date
     let fullscreen: Bool
     let isPlayingChannel: Bool
+    let highlight: ProgramGuide.Schedule.Highlight?
     private var scale: CGFloat { fullscreen ? 1.3 : 1 }
     private var currentHighlight: Color { isPlayingChannel ? .sofaAccent : .white }
 
     var body: some View {
-        let current = program.contains(now)
+        let highlighted = highlight?.program == program
         let past = program.end <= now
         return VStack(alignment: .leading, spacing: 7 * scale) {
             HStack(spacing: 6 * scale) {
-                Text(program.timeRange()).monospacedDigit().foregroundStyle(current ? .primary : .secondary)
+                Text(program.timeRange()).monospacedDigit().foregroundStyle(highlighted ? .primary : .secondary)
                 Spacer(minLength: 0)
-                if current {
-                    Text(isPlayingChannel ? "当前节目" : "正在播出").foregroundStyle(currentHighlight)
+                if highlighted, let highlight {
+                    Text(highlight.badge(isPlayingChannel: isPlayingChannel)).foregroundStyle(currentHighlight)
                         .font(.system(size: 10 * scale, weight: .medium))
                 }
             }
             .font(.system(size: 11 * scale))
-            Text(program.title).font(.system(size: 14 * scale, weight: current ? .semibold : .regular))
+            Text(program.title).font(.system(size: 14 * scale, weight: highlighted ? .semibold : .regular))
                 .foregroundStyle(past ? .secondary : .primary).fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 16 * scale).padding(.vertical, 13 * scale)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(current ? (fullscreen ? 0.07 : 0.10) : 0))
-        .overlay(alignment: .leading) { if current { currentHighlight.frame(width: 3) } }
+        .background(Color.white.opacity(highlighted ? (fullscreen ? 0.07 : 0.10) : 0))
+        .overlay(alignment: .leading) { if highlighted { currentHighlight.frame(width: 3) } }
         .accessibilityElement(children: .combine)
     }
 }
@@ -158,10 +159,11 @@ private struct ProgramGuideScrollView: NSViewRepresentable {
             centreRequested = centreRequested || viewportSize != size
             rowsNeedLayout = false; viewportSize = size
             var y: CGFloat = 0
+            let highlight = ProgramGuide.Schedule.highlight(in: configuration.programs, at: configuration.now)
             for (host, program) in zip(hosts, configuration.programs) {
                 host.rootView = AnyView(
                     ProgramGuideRow(program: program, now: configuration.now, fullscreen: configuration.fullscreen,
-                                    isPlayingChannel: configuration.isPlayingChannel)
+                                    isPlayingChannel: configuration.isPlayingChannel, highlight: highlight)
                         .frame(width: size.width)
                         .fixedSize(horizontal: false, vertical: true)
                         .preferredColorScheme(.dark)

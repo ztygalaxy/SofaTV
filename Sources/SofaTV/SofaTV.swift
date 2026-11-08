@@ -9,12 +9,13 @@ import WebKit
     @Published private(set) var personalization = ChannelPersonalization()
     @Published var selected: Channel?
     var onStopPlayback: ((Bool) -> Void)?
-    @Published var loading = false
+    @Published private(set) var loading = false
     @Published private(set) var updatingSourceIDs: Set<String> = []
     @Published private(set) var sourceUpdateErrors: [String: String] = [:]
     private var startedSourceUpdates = false
     private var sourceUpdateTask: Task<Void, Never>?
     private var sourceUpdateID = UUID()
+    private var imports = ChannelImportState()
     private let defaults: UserDefaults
     private let channelRepository: OnlineChannelRepository
     private let warmsChannels: Bool
@@ -71,7 +72,7 @@ import WebKit
     @Published var videoVisible = false
     @Published var webVideo = false
     let resolver = WebMediaResolver()
-    let warmup = WebMediaWarmup()
+    let warmup: WebMediaWarmup
     private var session = UUID()
     private var race = PlaybackRace()
     @Published var playbackMetrics = "尚无播放统计"
@@ -97,6 +98,30 @@ import WebKit
     private var observation: NSKeyValueObservation?
     private var playbackObservers: [NSObjectProtocol] = []
     private var timeout: Task<Void, Never>?
+    private var nativeAudioTask: Task<Void, Never>?
+    private var nativeAudioGain: Float = 1
+    private func silenceNativeAudio() {
+        nativeAudioTask?.cancel(); nativeAudioTask = nil
+        player.isMuted = true; player.volume = 0; nativeAudioGain = 1
+    }
+    private func activateNativeAudio() {
+        nativeAudioTask?.cancel()
+        nativeAudioGain = 0
+        player.volume = 0
+        player.isMuted = false
+        let token = session
+        // A brief fade avoids exposing a full-gain buffer at the handoff. Read
+        // the live level each step so mute or a slider change wins immediately.
+        nativeAudioTask = Task { @MainActor [weak self] in
+            for step in 1...8 {
+                do { try await Task.sleep(for: .milliseconds(15)) } catch { return }
+                guard !Task.isCancelled, let self, self.session == token, self.race.output == .native else { return }
+                self.nativeAudioGain = Float(step) / 8
+                self.player.volume = self.volume * self.nativeAudioGain
+            }
+            self?.nativeAudioTask = nil
+        }
+    }
     func applySettings() {
         player.currentItem?.preferredPeakBitRate = quality == 1 ? 3_000_000 : quality == 2 ? 800_000 : 0
         player.currentItem?.preferredForwardBufferDuration = mode == 2 ? 1 : mode == 1 ? 5 : 15
@@ -145,7 +170,7 @@ import WebKit
     private func applyVolume(_ next: PlaybackVolume, rememberChannel: Bool) {
         if next != playbackVolume { playbackVolume = next }
         // Engine mute flags belong to playback handoff; amplitude zero keeps both engines silent.
-        player.volume = next.volume
+        player.volume = next.volume * nativeAudioGain
         resolver.setVolume(next.volume)
         defaults.set(next.isMuted, forKey: "playback-muted")
         defaults.set(next.volumeBeforeMute, forKey: "playback-volume-before-mute")
@@ -167,7 +192,8 @@ import WebKit
         channels.first(where: { $0.identity == channel.identity })?.id ?? channel.id
     }
     private func failed(_ channel: Channel, index: Int, message: String) {
-        guard selected?.id == channel.id, sourceIndex == index else { return }
+        guard let selected, sourceIndex == index,
+              selected.identity == channel.identity || selected.preferenceKey == channel.preferenceKey else { return }
         if let fallback = deferredH5eIndex {
             allowReducedH5e = true; start(channel, index: fallback); return
         }
@@ -175,13 +201,13 @@ import WebKit
         recovery.failed(message)
     }
     private func start(_ channel: Channel, index: Int) {
+        silenceNativeAudio()
         recovery.started(index: index)
         timeout?.cancel(); observation = nil; resolver.cancel(); session = UUID(); cmgLoader?.cancel(); cmgLoader = nil; videoVisible = false; webVideo = false; resolving = false; sourceIndex = index
         DockIconController.shared.reset()
         latestWebMedia = nil; deferredH5eIndex = nil
         race.begin(); diagnostics = []; playbackMetrics = "尚无播放统计"; recordNative("等待媒体地址和解密会话")
         let url = channel.sources[index]
-        player.isMuted = true
         player.pause(); player.replaceCurrentItem(with: nil)
         if url.scheme == "webview" {
             guard let page = URL(string: String(url.absoluteString.dropFirst("webview://".count))), ["http", "https"].contains(page.scheme ?? "") else {
@@ -207,7 +233,7 @@ import WebKit
         return page
     }
     private func configureWarmup() {
-        guard warmsChannels else { return }
+        guard warmsChannels, selected != nil, videoVisible else { warmup.cancel(); return }
         let pages = channels.flatMap(\.sources).compactMap(webpageURL)
         var priority: [URL] = []
         if let selected, let index = channels.firstIndex(where: { $0.identity == selected.identity }), channels.count > 1 {
@@ -342,7 +368,7 @@ import WebKit
             }
             playbackObservers.append(observer)
         }
-        player.isMuted = true
+        silenceNativeAudio()
         observation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
             let status = item.status; let message = item.error?.localizedDescription ?? "所有线路均无法播放"
             Task { @MainActor [weak self] in
@@ -394,19 +420,21 @@ import WebKit
         recordNative(size.width > 0 && size.height > 0 ? "原生首帧已显示 · \(Int(size.width))×\(Int(size.height))" : "原生首帧已显示")
         timeout?.cancel(); resolving = false
         recovery.ready()
-        configureWarmup()
         if let selected { DockIconController.shared.show(channelName: selected.name) }
         // Mute the web channel before enabling native audio, including queued script calls.
         resolver.setAudible(false) { [weak self] in
             guard let self, self.session == token, self.race.output == .native else { return }
-            self.webVideo = false; self.videoVisible = true; self.player.isMuted = false
+            self.webVideo = false; self.videoVisible = true
+            self.activateNativeAudio()
             self.resolver.suspendVideoForNative()
             self.playbackStatus = "原生视频播放中"
+            self.configureWarmup()
         }
     }
     init(defaults: UserDefaults = .standard, channelRepository: OnlineChannelRepository = .shared, warmsChannels: Bool = true,
-         recoveryMonitor: PlaybackRecoveryMonitor? = nil) {
+         recoveryMonitor: PlaybackRecoveryMonitor? = nil, warmup: WebMediaWarmup = WebMediaWarmup()) {
         self.defaults = defaults; self.channelRepository = channelRepository; self.warmsChannels = warmsChannels
+        self.warmup = warmup
         providedRecoveryMonitor = recoveryMonitor
         quality = defaults.integer(forKey: "quality"); mode = defaults.integer(forKey: "mode")
         stretch = defaults.bool(forKey: "stretch")
@@ -425,15 +453,32 @@ import WebKit
            let saved = try? JSONDecoder().decode(ChannelPersonalization.self, from: data) {
             personalization = saved
         } else {
-            personalization.favoriteKeys = Set(channels.filter { favorites.contains($0.id) }.map(\.preferenceKey))
+            personalization.favoriteKeys = Set(channels.filter {
+                favorites.contains($0.id) || favorites.contains($0.url.absoluteString)
+            }.map(\.preferenceKey))
         }
         for channel in channels {
+            let legacyID = channel.url.absoluteString
             if personalization.volumes[channel.preferenceKey] == nil,
-               let volume = defaults.object(forKey: "volume-" + channel.id) as? NSNumber {
+               let volume = (defaults.object(forKey: "volume-" + channel.id)
+                   ?? defaults.object(forKey: "volume-" + legacyID)) as? NSNumber {
                 personalization.volumes[channel.preferenceKey] = volume.floatValue
             }
             if personalization.lines[channel.preferenceKey] == nil,
-               let line = defaults.string(forKey: "line-" + channel.id) { personalization.lines[channel.preferenceKey] = line }
+               let line = defaults.string(forKey: "line-" + channel.id)
+                   ?? defaults.string(forKey: "line-" + legacyID) { personalization.lines[channel.preferenceKey] = line }
+            if let volume = personalization.volumes[channel.preferenceKey] {
+                defaults.set(volume, forKey: "volume-" + channel.id)
+            }
+            if let line = personalization.lines[channel.preferenceKey] {
+                defaults.set(line, forKey: "line-" + channel.id)
+            }
+        }
+        // Copy every legacy URL setting before removing it: several distinct
+        // old channels may share that URL. New channels must not inherit it.
+        for legacyID in Set(channels.map({ $0.url.absoluteString })) {
+            defaults.removeObject(forKey: "volume-" + legacyID)
+            defaults.removeObject(forKey: "line-" + legacyID)
         }
         channels = personalization.applying(to: channels)
         favorites = Set(channels.filter { personalization.favoriteKeys.contains($0.preferenceKey) }.map(\.id))
@@ -484,6 +529,9 @@ import WebKit
         }
     }
     func play(_ channel: Channel) {
+        // Silence the old channel before restoring the new channel's level.
+        silenceNativeAudio()
+        player.pause()
         timeout?.cancel(); observation = nil; resolver.cancel(); session = UUID(); webChannel = nil
         selected = channel; restoreVolume(for: channel); allowReducedH5e = false; deferredH5eIndex = nil
         guard !channel.sources.isEmpty else {
@@ -514,6 +562,10 @@ import WebKit
     var previousChannel: Channel? {
         let currentKey = selected?.preferenceKey ?? personalization.recent.first
         return recentChannels.first { $0.preferenceKey != currentKey }
+    }
+    func playPreviousChannel() {
+        guard let previousChannel else { return }
+        play(previousChannel)
     }
     func customizeChannel(_ channel: Channel, name: String, group: String) {
         personalization.customize(channel, name: name, group: group)
@@ -569,6 +621,7 @@ import WebKit
     func restoreConfiguration(_ data: Data) throws {
         let backup = try ChannelConfigurationBackup.decode(data)
         stopPlayback()
+        imports.invalidate(); loading = false
         sourceUpdateTask?.cancel(); sourceUpdateID = UUID(); sourceUpdateTask = nil
         updatingSourceIDs = []; sourceUpdateErrors = [:]
         channelLists = OnlineChannelSource.migrate(backup.sources); personalization = backup.personalization
@@ -606,6 +659,7 @@ import WebKit
         selected = nil; sourceIndex = 0; playbackStatus = "就绪"
     }
     private func clearPlaybackEngines() {
+        silenceNativeAudio()
         session = UUID(); race.begin(); latestWebMedia = nil; deferredH5eIndex = nil
         sleepPrevention.setPlaying(false)
         timeout?.cancel(); observation = nil; resolver.cancel(); cmgLoader?.cancel(); cmgLoader = nil
@@ -674,21 +728,28 @@ import WebKit
         rebuildChannels()
     }
     func deleteList(_ list: ChannelList) {
+        imports.cancel(sourceID: list.id); loading = imports.isLoading
         channelLists.removeAll { $0.id == list.id }; sourceUpdateErrors.removeValue(forKey: list.id); rebuildChannels()
     }
     func load(_ address: String, direct: Bool) async {
         guard let url = URL(string: address), ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { showError("请输入有效的 HTTP/HTTPS 地址"); return }
         if direct { play(Channel(name: url.lastPathComponent, group: "直播", url: url)); return }
-        loading = true; defer { loading = false }
+        let list = channelLists.first(where: { $0.remoteURL == url }) ?? .online(url)
+        let ticket = imports.begin(sourceID: list.id)
+        loading = imports.isLoading
+        defer { imports.finish(ticket); loading = imports.isLoading }
         do {
-            let list = channelLists.first(where: { $0.remoteURL == url }) ?? .online(url)
             let update = try await channelRepository.refresh(list, force: true)
+            guard !Task.isCancelled, imports.accepts(ticket) else { return }
             if let index = channelLists.firstIndex(where: { $0.id == list.id }) {
                 channelLists[index] = update.applying(to: channelLists[index])
             } else { channelLists.append(update.applying(to: list)) }
             sourceUpdateErrors.removeValue(forKey: list.id)
             rebuildChannels(preservingPlayback: true)
-        } catch { showError(error.localizedDescription) }
+        } catch {
+            guard !Task.isCancelled, imports.accepts(ticket) else { return }
+            showError(error.localizedDescription)
+        }
     }
 }
 enum LibraryDeletion {
@@ -811,7 +872,7 @@ struct ContentView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let maximumSidebarWidth = max(minimumSidebarWidth, geometry.size.width - minimumVideoWidth - 1)
+            let maximumSidebarWidth = max(minimumSidebarWidth, geometry.size.width - minimumVideoWidth - SidebarResizeHandle.dividerWidth)
             let visibleSidebarWidth = min(max(sidebarWidth, minimumSidebarWidth), maximumSidebarWidth)
             let sidebarHidden = ui.sidebarCollapsed && library.selected != nil
             let snapshot = sidebarSnapshot()
@@ -914,16 +975,16 @@ struct ContentView: View {
                 SidebarResizeHandle(
                     width: Binding(
                         get: { sidebarWidth },
-                        set: {
-                            sidebarWidth = $0
-                            UserDefaults.standard.set(Double($0), forKey: "sidebarWidth")
-                        }
+                        set: { sidebarWidth = $0 }
                     ),
                     visibleWidth: visibleSidebarWidth,
                     minimumWidth: minimumSidebarWidth,
-                    maximumWidth: maximumSidebarWidth
+                    maximumWidth: maximumSidebarWidth,
+                    onCommit: { UserDefaults.standard.set(Double(sidebarWidth), forKey: "sidebarWidth") },
+                    isActive: !sidebarHidden
                 )
-                .frame(width: sidebarHidden ? 0 : 1)
+                .frame(width: sidebarHidden ? 0 : SidebarResizeHandle.dividerWidth, height: geometry.size.height)
+                .zIndex(2)
                 .opacity(sidebarHidden ? 0 : 1)
                 .allowsHitTesting(!sidebarHidden)
                 .accessibilityHidden(sidebarHidden)

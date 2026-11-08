@@ -1,12 +1,25 @@
 import SwiftUI
 
+@MainActor protocol WebMediaWarmupResolving: AnyObject {
+    var warmupView: NSView { get }
+    func resolve(_ url: URL, completion: @escaping (ResolvedWebMedia) -> Void, failure: @escaping (String) -> Void)
+    func cancel()
+}
+
+extension WebMediaResolver: WebMediaWarmupResolving {
+    var warmupView: NSView { webView }
+}
+
 /// Resolves every webpage-backed channel in a bounded rolling queue. Signed media
 /// URLs and CMG sessions are short-lived, so this is intentionally a refresh
 /// service rather than a one-time, permanent cache.
 @MainActor final class WebMediaWarmup {
     // Three hidden pages balance full-library coverage with source/server load.
     // They observe requests only; `WebMediaResolver` keeps their video paused.
-    let resolvers = (0..<3).map { _ in WebMediaResolver(keepsVideoRunning: false) }
+    private(set) var resolvers: [any WebMediaWarmupResolving] = []
+    private let environment: WebMediaWarmupEnvironment
+    private let makeResolver: () -> any WebMediaWarmupResolving
+    private weak var host: NSView?
 
     private struct Entry {
         let media: ResolvedWebMedia
@@ -21,8 +34,28 @@ import SwiftUI
     private var priorityPages: [URL] = []
     private var nextPageIndex = 0
     private var activePages: [URL?] = Array(repeating: nil, count: 3)
+    private var workTokens: [UUID?] = Array(repeating: nil, count: 3)
     private var deadlines: [Task<Void, Never>?] = Array(repeating: nil, count: 3)
     private var refreshTask: Task<Void, Never>?
+
+    init(environment: WebMediaWarmupEnvironment = WebMediaWarmupEnvironment(),
+         makeResolver: @escaping () -> any WebMediaWarmupResolving = { WebMediaResolver(keepsVideoRunning: false) }) {
+        self.environment = environment; self.makeResolver = makeResolver
+        environment.onChange = { [weak self] in self?.schedule() }
+    }
+
+    func attach(to host: NSView) {
+        guard self.host !== host else { return }
+        self.host = host
+        attachResolvers()
+        schedule()
+    }
+
+    func detach(from host: NSView) {
+        guard self.host === host else { return }
+        self.host = nil
+        suspendWork()
+    }
 
     func cachedMedia(for page: URL) -> ResolvedWebMedia? {
         removeExpired()
@@ -33,6 +66,7 @@ import SwiftUI
     /// front of the next refresh cycle. Existing usable results are retained.
     func configure(pages requestedPages: [URL], prioritized prioritizedPages: [URL]) {
         let all = unique(requestedPages)
+        guard !all.isEmpty else { cancel(); return }
         let allowed = Set(all)
         pages = all
         priorityPages = unique(prioritizedPages.filter { allowed.contains($0) })
@@ -40,23 +74,41 @@ import SwiftUI
         entries = entries.filter { allowed.contains($0.key) && $0.value.expiresAt > Date() }
         nextRetry = nextRetry.filter { allowed.contains($0.key) && $0.value > Date() }
         for index in activePages.indices where activePages[index].map({ !allowed.contains($0) }) == true {
-            finish(index, retryAfter: nil)
+            finish(index, retryAfter: nil, reschedule: false)
         }
         promotePriorityWork()
         schedule()
     }
 
     func cancel() {
-        refreshTask?.cancel(); refreshTask = nil
         entries.removeAll(); nextRetry.removeAll(); pages.removeAll(); priorityPages.removeAll()
-        for index in resolvers.indices {
-            deadlines[index]?.cancel(); deadlines[index] = nil; activePages[index] = nil
-            resolvers[index].cancel()
+        nextPageIndex = 0
+        suspendWork()
+    }
+
+    private func suspendWork() {
+        refreshTask?.cancel(); refreshTask = nil
+        for index in activePages.indices {
+            deadlines[index]?.cancel(); deadlines[index] = nil
+            activePages[index] = nil; workTokens[index] = nil
+        }
+        // The hosting NSView also retains its subviews. Detach before dropping
+        // the pool so stopped/hidden channels can release their WKWebViews.
+        let previous = resolvers
+        resolvers.removeAll()
+        for resolver in previous {
+            resolver.warmupView.removeFromSuperview()
+            resolver.cancel()
         }
     }
 
     private func schedule() {
+        guard host != nil, environment.allowsWarmup, !pages.isEmpty else { suspendWork(); return }
         removeExpired()
+        if resolvers.isEmpty {
+            resolvers = activePages.indices.map { _ in makeResolver() }
+            attachResolvers()
+        }
         for index in resolvers.indices where activePages[index] == nil {
             guard let page = nextPageToWarm() else { break }
             start(page, on: index)
@@ -87,8 +139,10 @@ import SwiftUI
     private func start(_ page: URL, on index: Int) {
         refreshTask?.cancel(); refreshTask = nil
         activePages[index] = page
+        let token = UUID()
+        workTokens[index] = token
         resolvers[index].resolve(page, completion: { [weak self] media in
-            guard let self, self.activePages[index] == page else { return }
+            guard let self, self.workTokens[index] == token else { return }
             self.entries[page] = Entry(media: media, expiresAt: Date().addingTimeInterval(self.lifetime))
             // Yangshipin media needs the matching CMG capture. The resolver
             // emits once more when it becomes available; other sites are done
@@ -97,11 +151,12 @@ import SwiftUI
                 self.finish(index, retryAfter: nil)
             }
         }, failure: { [weak self] _ in
-            self?.finish(index, retryAfter: Date().addingTimeInterval(self?.retryDelay ?? 45))
+            guard let self, self.workTokens[index] == token else { return }
+            self.finish(index, retryAfter: Date().addingTimeInterval(self.retryDelay))
         })
         deadlines[index] = Task { [weak self] in
             do { try await Task.sleep(for: self?.deadline ?? .seconds(12)) } catch { return }
-            guard !Task.isCancelled, self?.activePages[index] == page else { return }
+            guard !Task.isCancelled, self?.workTokens[index] == token else { return }
             self?.finish(index, retryAfter: Date().addingTimeInterval(self?.retryDelay ?? 45))
         }
     }
@@ -113,16 +168,27 @@ import SwiftUI
         let now = Date()
         guard priorityPages.contains(where: { entries[$0] == nil && (nextRetry[$0] ?? .distantPast) <= now && !activePages.contains($0) }),
               let index = activePages.indices.first(where: { activePages[$0].map({ !priorityPages.contains($0) }) == true }) else { return }
-        finish(index, retryAfter: nil)
+        finish(index, retryAfter: nil, reschedule: false)
     }
 
-    private func finish(_ index: Int, retryAfter: Date?) {
+    private func finish(_ index: Int, retryAfter: Date?, reschedule: Bool = true) {
         guard let page = activePages[index] else { return }
         deadlines[index]?.cancel(); deadlines[index] = nil
-        activePages[index] = nil
+        activePages[index] = nil; workTokens[index] = nil
         if let retryAfter { nextRetry[page] = retryAfter }
         resolvers[index].cancel()
-        schedule()
+        if reschedule { schedule() }
+    }
+
+    private func attachResolvers() {
+        guard let host else { return }
+        for resolver in resolvers {
+            let view = resolver.warmupView
+            view.removeFromSuperview()
+            view.frame = host.bounds
+            view.alphaValue = 0.001
+            host.addSubview(view)
+        }
     }
 
     private func scheduleRefreshIfNeeded() {
@@ -157,16 +223,17 @@ import SwiftUI
 struct WarmupResolverHost: NSViewRepresentable {
     let warmup: WebMediaWarmup
 
+    func makeCoordinator() -> WebMediaWarmup { warmup }
+
     func makeNSView(context: Context) -> NSView {
         let host = NSView(frame: NSRect(x: 0, y: 0, width: 1, height: 1))
-        for webView in warmup.resolvers.map(\.webView) {
-            webView.removeFromSuperview()
-            webView.frame = host.bounds
-            webView.alphaValue = 0.001
-            host.addSubview(webView)
-        }
+        warmup.attach(to: host)
         return host
     }
 
-    func updateNSView(_ host: NSView, context: Context) {}
+    func updateNSView(_ host: NSView, context: Context) { warmup.attach(to: host) }
+
+    static func dismantleNSView(_ host: NSView, coordinator: WebMediaWarmup) {
+        coordinator.detach(from: host)
+    }
 }

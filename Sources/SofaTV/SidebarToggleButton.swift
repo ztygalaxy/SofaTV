@@ -5,6 +5,9 @@ import QuartzCore
 final class SidebarToggleButton: NSButton {
     var onPointerActivity: (() -> Void)?
     var onTrackingChanged: ((Bool) -> Void)?
+    var leadingResizeInset: CGFloat = 0 {
+        didSet { if oldValue != leadingResizeInset { window?.invalidateCursorRects(for: self) } }
+    }
     private var pointerTrackingArea: NSTrackingArea?
     private var collapsedState: Bool?
     private var tracking = false
@@ -39,7 +42,11 @@ final class SidebarToggleButton: NSButton {
         let area = NSTrackingArea(rect: .zero, options: [.activeAlways, .inVisibleRect, .mouseEnteredAndExited, .mouseMoved], owner: self)
         addTrackingArea(area); pointerTrackingArea = area
     }
-    override func resetCursorRects() { addCursorRect(visibleRect, cursor: .pointingHand) }
+    override func resetCursorRects() {
+        let rect = visibleRect.intersection(NSRect(x: bounds.minX + leadingResizeInset, y: bounds.minY,
+                                                   width: max(0, bounds.width - leadingResizeInset), height: bounds.height))
+        if !rect.isEmpty { addCursorRect(rect, cursor: isEnabled ? .pointingHand : .arrow) }
+    }
     override func mouseEntered(with event: NSEvent) { onPointerActivity?() }
     override func mouseMoved(with event: NSEvent) { onPointerActivity?() }
     override func mouseDown(with event: NSEvent) {

@@ -71,6 +71,9 @@ struct VideoStage: NSViewRepresentable {
         var onScroll: ((NSEvent) -> Void)?
         var isWindowDraggable = false
         var lastSidebarToggleTime: TimeInterval = 0
+        var cursorExclusions: [NSRect] = [] {
+            didSet { if oldValue != cursorExclusions { window?.invalidateCursorRects(for: self) } }
+        }
         private var pointerTrackingArea: NSTrackingArea?
         override var acceptsFirstResponder: Bool { false }
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -79,19 +82,21 @@ struct VideoStage: NSViewRepresentable {
             if let pointerTrackingArea { removeTrackingArea(pointerTrackingArea) }
             let area = NSTrackingArea(
                 rect: .zero,
-                options: [.activeAlways, .inVisibleRect, .mouseEnteredAndExited, .mouseMoved, .cursorUpdate],
+                options: [.activeAlways, .inVisibleRect, .mouseEnteredAndExited, .mouseMoved],
                 owner: self
             )
             addTrackingArea(area); pointerTrackingArea = area
         }
-        override func resetCursorRects() { addCursorRect(visibleRect, cursor: .arrow) }
+        override func resetCursorRects() {
+            for rect in PlaybackCursorRegions.background(in: visibleRect, excluding: cursorExclusions) {
+                addCursorRect(rect, cursor: .arrow)
+            }
+        }
         private func showPointer() {
             NSCursor.setHiddenUntilMouseMoves(false)
-            NSCursor.arrow.set()
         }
         override func mouseEntered(with event: NSEvent) { showPointer(); onPointerActivity?(); onPointerMoved?(event) }
         override func mouseMoved(with event: NSEvent) { showPointer(); onPointerActivity?(); onPointerMoved?(event) }
-        override func cursorUpdate(with event: NSEvent) { showPointer() }
         override func mouseDown(with event: NSEvent) {
             onPointerActivity?()
             if event.clickCount == 2, ProcessInfo.processInfo.systemUptime - lastSidebarToggleTime > NSEvent.doubleClickInterval {
@@ -108,25 +113,57 @@ struct VideoStage: NSViewRepresentable {
         override func magnify(with event: NSEvent) {}
         override func menu(for event: NSEvent) -> NSMenu? { nil }
     }
-    /// Decorative only: clicks and wheel input pass through to the video surface.
-    final class EdgeFade: NSView {
-        private let gradient = CAGradientLayer()
+    /// The gradient and its controls form one layer above the fullscreen browsers.
+    /// Padding around controls shields the browser without blocking its header or other content.
+    final class ControlsOverlay: NSView {
+        var onPointerActivity: (() -> Void)?
+        var onScroll: ((NSEvent) -> Void)?
+        var blocksBackgroundInteraction = false
+        private let top: Bool
+        private var area: NSTrackingArea?
+        private var cursorFrames: [NSRect] = []
         init(top: Bool = false) {
+            self.top = top
             super.init(frame: .zero)
             wantsLayer = true
-            gradient.colors = [NSColor.black.withAlphaComponent(0.85).cgColor, NSColor.black.withAlphaComponent(0).cgColor]
-            gradient.startPoint = CGPoint(x: 0.5, y: top ? 1 : 0)
-            gradient.endPoint = CGPoint(x: 0.5, y: top ? 0 : 1)
-            layer?.addSublayer(gradient)
         }
         required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-        override func hitTest(_ point: NSPoint) -> NSView? { nil }
-        override func layout() {
-            super.layout()
-            CATransaction.begin(); CATransaction.setDisableActions(true)
-            gradient.frame = bounds
-            CATransaction.commit()
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            guard !isHiddenOrHasHiddenAncestor, let hit = super.hitTest(point) else { return nil }
+            if hit !== self { return hit }
+            return blocksBackgroundInteraction && containsControls(convert(point, from: superview)) ? self : nil
         }
+        func containsControls(_ point: NSPoint) -> Bool {
+            subviews.contains { !$0.isHiddenOrHasHiddenAncestor && $0.frame.insetBy(dx: -8, dy: -8).intersection(bounds).contains(point) }
+        }
+        override func resetCursorRects() {
+            let controls = subviews.filter { !$0.isHiddenOrHasHiddenAncestor }.map(\.frame)
+            for control in controls {
+                for rect in PlaybackCursorRegions.background(in: control.insetBy(dx: -8, dy: -8).intersection(visibleRect), excluding: controls) {
+                    addCursorRect(rect, cursor: .arrow)
+                }
+            }
+        }
+        func refreshCursorRects() {
+            let frames = subviews.filter { !$0.isHiddenOrHasHiddenAncestor }.map(\.frame)
+            guard frames != cursorFrames else { return }
+            cursorFrames = frames
+            window?.invalidateCursorRects(for: self)
+        }
+        override func draw(_ dirtyRect: NSRect) {
+            NSGradient(starting: .black.withAlphaComponent(0.85), ending: .clear)?.draw(in: bounds, angle: top ? 270 : 90)
+        }
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            if let area { removeTrackingArea(area) }
+            let next = NSTrackingArea(rect: .zero, options: [.activeAlways, .inVisibleRect, .mouseEnteredAndExited, .mouseMoved], owner: self)
+            addTrackingArea(next); area = next
+        }
+        override func mouseEntered(with event: NSEvent) { onPointerActivity?() }
+        override func mouseMoved(with event: NSEvent) { onPointerActivity?() }
+        override func mouseDown(with event: NSEvent) { onPointerActivity?() }
+        override func mouseUp(with event: NSEvent) {}
+        override func scrollWheel(with event: NSEvent) { onPointerActivity?(); onScroll?(event) }
     }
     /// Stays in the video-only window, allowing the channel browser to blur the
     /// picture beneath it without bringing the normal application window forward.
@@ -183,10 +220,11 @@ struct VideoStage: NSViewRepresentable {
         private let fullscreenDrawer = FullscreenChannelDrawer()
         private let sidebarButton = SidebarToggleButton()
         private let volumeControl = VideoVolumeControl()
-        private let volumeBackdrop = EdgeFade()
-        private let topBackdrop = EdgeFade(top: true)
+        private let volumeBackdrop = ControlsOverlay()
+        private let topBackdrop = ControlsOverlay(top: true)
         private let miniPlayerButton = VideoVolumeControl.SymbolButton()
         let powerButton = VideoVolumeControl.SymbolButton()
+        let previousChannelButton = VideoVolumeControl.SymbolButton()
         private var volumeScroll = VideoVolumeScroll()
         private var lastDisplayedVolume: Float?
         private var lastDisplayedMute: Bool?
@@ -201,6 +239,7 @@ struct VideoStage: NSViewRepresentable {
         private var trackingVolume = false
         private var trackingMiniPlayerButton = false
         private var trackingPowerButton = false
+        private var trackingPreviousChannelButton = false
         private var sidebarControlAvailable = false
         private var volumeControlAvailable = false
         private var fullscreenDrawerVisible = false
@@ -212,7 +251,7 @@ struct VideoStage: NSViewRepresentable {
         private weak var guidePreview: ProgramGuidePreview?
         private var guideHost: ProgramGuideOverlayHost?
         private var guideUpdates = Set<AnyCancellable>()
-        private var trackingControls: Bool { trackingSidebarButton || trackingVolume || trackingMiniPlayerButton || trackingPowerButton }
+        private var trackingControls: Bool { trackingSidebarButton || trackingVolume || trackingMiniPlayerButton || trackingPowerButton || trackingPreviousChannelButton }
         var onToggleFullscreen: (() -> Void)?
         var onToggleMiniPlayer: (() -> Void)?
         var isMiniPlayer = false {
@@ -228,6 +267,8 @@ struct VideoStage: NSViewRepresentable {
         var isVideoFullscreen = false {
             didSet {
                 volumeControl.setFullscreen(isVideoFullscreen)
+                volumeBackdrop.blocksBackgroundInteraction = isVideoFullscreen
+                topBackdrop.blocksBackgroundInteraction = isVideoFullscreen
                 if !isVideoFullscreen { setFullscreenDrawerVisible(false, animated: false) }
                 fullscreenBrowserSuppressed = false
                 fullscreenBrowsersClosing = false
@@ -241,8 +282,10 @@ struct VideoStage: NSViewRepresentable {
         weak var library: Library?
         var observation: NSKeyValueObservation?
         private var libraryUpdates: AnyCancellable?
-        init(library: Library) {
+        private let pointerLocation: (NSWindow) -> NSPoint
+        init(library: Library, pointerLocation: @escaping (NSWindow) -> NSPoint = { $0.mouseLocationOutsideOfEventStream }) {
             self.library = library
+            self.pointerLocation = pointerLocation
             super.init(frame: .zero)
             wantsLayer = true
             let web = library.resolver.webView
@@ -254,22 +297,33 @@ struct VideoStage: NSViewRepresentable {
             spinner.style = .spinning; spinner.controlSize = .large; spinner.startAnimation(nil)
             label.textColor = .secondaryLabelColor; label.alignment = .center
             cover.addSubview(spinner); cover.addSubview(label); addSubview(cover)
-            volumeBackdrop.isHidden = true; addSubview(volumeBackdrop)
-            topBackdrop.isHidden = true; addSubview(topBackdrop); addSubview(pointer)
+            addSubview(pointer)
             fullscreenDrawer.isHidden = true; addSubview(fullscreenDrawer)
             sidebarButton.target = self; sidebarButton.action = #selector(toggleSidebar)
             sidebarButton.isHidden = true; addSubview(sidebarButton)
-            volumeControl.isHidden = true; addSubview(volumeControl)
+            topBackdrop.isHidden = true; addSubview(topBackdrop)
+            volumeBackdrop.isHidden = true; addSubview(volumeBackdrop)
+            volumeControl.isHidden = true; volumeBackdrop.addSubview(volumeControl)
             miniPlayerButton.target = self; miniPlayerButton.action = #selector(toggleMiniPlayer)
-            miniPlayerButton.isHidden = true; addSubview(miniPlayerButton)
+            miniPlayerButton.isHidden = true; topBackdrop.addSubview(miniPlayerButton)
             powerButton.target = self; powerButton.action = #selector(stopPlayback)
             powerButton.toolTip = "停止播放"; powerButton.setAccessibilityLabel("停止播放")
             powerButton.setSymbol("power")
-            powerButton.isHidden = true; addSubview(powerButton)
+            powerButton.isHidden = true; topBackdrop.addSubview(powerButton)
+            previousChannelButton.target = self; previousChannelButton.action = #selector(playPreviousChannel)
+            if let url = Bundle.main.url(forResource: "fanhuishangyiceng", withExtension: "svg", subdirectory: "PlaybackControls"),
+               let image = NSImage(contentsOf: url) {
+                previousChannelButton.setImage(image)
+            } else { previousChannelButton.setSymbol("arrow.uturn.backward") }
+            previousChannelButton.isHidden = true; volumeBackdrop.addSubview(previousChannelButton)
             configureMiniPlayerButton()
             pointer.onPointerActivity = { [weak self] in self?.showOverlayControls() }
             pointer.onPointerMoved = { [weak self] event in self?.updateFullscreenDrawer(for: event) }
             pointer.onScroll = { [weak self] event in self?.adjustVolume(with: event) }
+            for overlay in [volumeBackdrop, topBackdrop] {
+                overlay.onPointerActivity = { [weak self] in self?.showOverlayControls() }
+                overlay.onScroll = { [weak self] event in self?.adjustVolume(with: event) }
+            }
             fullscreenDrawer.onPointerMoved = { [weak self] event in self?.updateFullscreenDrawer(for: event) }
             fullscreenDrawer.onPointerExited = { [weak self] event in self?.fullscreenDrawerDidExit(for: event) }
             sidebarButton.onPointerActivity = { [weak self] in self?.showOverlayControls() }
@@ -321,6 +375,14 @@ struct VideoStage: NSViewRepresentable {
                 self.pointer.lastSidebarToggleTime = ProcessInfo.processInfo.systemUptime
                 self.controlsTrackingChanged()
             }
+            previousChannelButton.onPointerActivity = { [weak self] in self?.showOverlayControls() }
+            previousChannelButton.onScroll = { [weak self] event in self?.adjustVolume(with: event) }
+            previousChannelButton.onTrackingChanged = { [weak self] tracking in
+                guard let self else { return }
+                self.trackingPreviousChannelButton = tracking
+                self.pointer.lastSidebarToggleTime = ProcessInfo.processInfo.systemUptime
+                self.controlsTrackingChanged()
+            }
             updateBackground()
             observation = playerView.observe(\.isReadyForDisplay, options: [.new]) { [weak self] view, _ in
                 Task { @MainActor [weak self, weak view] in
@@ -347,6 +409,10 @@ struct VideoStage: NSViewRepresentable {
             onToggleMiniPlayer?()
         }
         @objc private func stopPlayback() { library?.stopPlayback() }
+        @objc private func playPreviousChannel() {
+            pointer.lastSidebarToggleTime = ProcessInfo.processInfo.systemUptime
+            library?.playPreviousChannel()
+        }
         func configureSidebar(collapsed: Bool, toggle: @escaping (Bool) -> Void) {
             sidebarCollapsed = collapsed; onToggleSidebar = toggle
             sidebarButton.setCollapsed(collapsed)
@@ -362,7 +428,7 @@ struct VideoStage: NSViewRepresentable {
             let guide = ProgramGuideOverlayHost(preview: preview, store: programGuide, presentation: .fullscreen,
                                                 playingChannel: library.catalogSelectedChannel)
             guideHost = guide
-            addSubview(guide, positioned: .above, relativeTo: fullscreenDrawer)
+            addSubview(guide, positioned: .below, relativeTo: topBackdrop)
             preview.$channel.receive(on: DispatchQueue.main).sink { [weak self] _ in
                 self?.updateGuideInteraction()
             }.store(in: &guideUpdates)
@@ -384,6 +450,7 @@ struct VideoStage: NSViewRepresentable {
         private func updateGuideInteraction() {
             guideHost?.isHidden = !isVideoFullscreen
             guideHost?.isInteractive = isVideoFullscreen && guidePreview?.channel != nil
+            updateCursorRegions()
         }
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
@@ -391,6 +458,7 @@ struct VideoStage: NSViewRepresentable {
             if window == nil {
                 miniPlayerButton.cancelTracking()
                 powerButton.cancelTracking()
+                previousChannelButton.cancelTracking()
                 volumeScroll.reset(); hideOverlayControls(); setFullscreenDrawerVisible(false, animated: false)
             }
         }
@@ -410,7 +478,7 @@ struct VideoStage: NSViewRepresentable {
         }
         private func containsCurrentPointer() -> Bool {
             guard let window else { return false }
-            return bounds.contains(convert(window.mouseLocationOutsideOfEventStream, from: nil))
+            return bounds.contains(convert(pointerLocation(window), from: nil))
         }
         private func fullscreenDrawerFrame(visible: Bool) -> NSRect {
             let width = min(max(320, bounds.width / 3), 460)
@@ -437,12 +505,12 @@ struct VideoStage: NSViewRepresentable {
             updateFullscreenDrawer(for: event)
         }
         private func fullscreenBrowserContains(_ point: NSPoint) -> Bool {
-            bounds.contains(point) && (point.x <= bounds.width / 3 ||
+            !controlsContain(point) && bounds.contains(point) && (point.x <= bounds.width / 3 ||
                 (guideHost?.isInteractive == true && guideHost?.frame.contains(point) == true))
         }
         private func fullscreenBrowserContainsCurrentPointer() -> Bool {
             guard let window else { return false }
-            return fullscreenBrowserContains(convert(window.mouseLocationOutsideOfEventStream, from: nil))
+            return fullscreenBrowserContains(convert(pointerLocation(window), from: nil))
         }
         func dismissFullscreenBrowsers() -> Bool {
             guard isVideoFullscreen else { return false }
@@ -504,6 +572,7 @@ struct VideoStage: NSViewRepresentable {
             if !volumeAvailable { setPlayerControlsVisible(false) }
             if !sidebarAvailable && !volumeAvailable { hideOverlayControls() }
             else if becameAvailable && containsCurrentPointer() { showOverlayControls() }
+            updateCursorRegions()
         }
         private func showOverlayControls() {
             guard sidebarControlAvailable || volumeControlAvailable else { return }
@@ -532,14 +601,41 @@ struct VideoStage: NSViewRepresentable {
             guard !trackingControls else { return }
             if let timer = controlsHideTimer, timer.isValid { timer.fireDate = Date(timeIntervalSinceNow: 3) }
             else {
-                let timer = Timer(timeInterval: 3, target: self, selector: #selector(hideOverlayControls), userInfo: nil, repeats: false)
+                let timer = Timer(timeInterval: 3, target: self, selector: #selector(hideIdleControls), userInfo: nil, repeats: false)
                 RunLoop.main.add(timer, forMode: .common); controlsHideTimer = timer
             }
         }
         private func setPlayerControlsVisible(_ visible: Bool) {
-            volumeControl.isHidden = !visible; volumeBackdrop.isHidden = !visible
-            miniPlayerButton.isHidden = !visible; topBackdrop.isHidden = !visible
-            powerButton.isHidden = !visible
+            for view in [volumeControl, volumeBackdrop, miniPlayerButton, topBackdrop, powerButton, previousChannelButton]
+                where view.isHidden == visible { view.isHidden = !visible }
+            updateCursorRegions()
+            volumeBackdrop.refreshCursorRects(); topBackdrop.refreshCursorRects()
+        }
+        @objc private func hideIdleControls() {
+            controlsHideTimer = nil
+            if trackingControls || pointerIsOverControls() { scheduleControlsHide(); return }
+            hideOverlayControls()
+        }
+        private var cursorControls: [NSView] { [sidebarButton, volumeBackdrop, topBackdrop] }
+        private func controlsContain(_ point: NSPoint) -> Bool {
+            if !sidebarButton.isHiddenOrHasHiddenAncestor && sidebarButton.frame.contains(point) { return true }
+            return [volumeBackdrop, topBackdrop].contains { !$0.isHiddenOrHasHiddenAncestor && $0.containsControls($0.convert(point, from: self)) }
+        }
+        private func pointerIsOverControls() -> Bool {
+            guard let window else { return false }
+            let point = convert(pointerLocation(window), from: nil)
+            return controlsContain(point)
+        }
+        private func updateCursorRegions() {
+            var obstacles = cursorControls + [fullscreenDrawer]
+            if let guideHost, guidePreview?.channel != nil { obstacles.append(guideHost) }
+            var exclusions = obstacles.filter { !$0.isHiddenOrHasHiddenAncestor }.map { pointer.convert($0.bounds, from: $0) }
+            let resizeInset = !sidebarCollapsed && !isVideoFullscreen && !isMiniPlayer ? SidebarResizeHandle.hitExtension : 0
+            sidebarButton.leadingResizeInset = resizeInset
+            if resizeInset > 0 {
+                exclusions.append(NSRect(x: pointer.bounds.minX, y: pointer.bounds.minY, width: resizeInset, height: pointer.bounds.height))
+            }
+            pointer.cursorExclusions = exclusions
         }
         @objc private func hideOverlayControls() {
             controlsHideTimer?.invalidate(); controlsHideTimer = nil
@@ -581,6 +677,10 @@ struct VideoStage: NSViewRepresentable {
             cover.layer?.backgroundColor = color
         }
         func update(_ library: Library) {
+            let previousTitle = library.previousChannel.map { "返回上一观看频道 · \($0.displayName)" } ?? "返回上一观看频道"
+            previousChannelButton.toolTip = previousTitle
+            previousChannelButton.setAccessibilityLabel(previousTitle)
+            previousChannelButton.isEnabled = library.previousChannel != nil
             let channelChanged = displayedChannelID != library.selected?.id
             let volumeChanged = lastDisplayedVolume != nil && (lastDisplayedVolume != library.volume || lastDisplayedMute != library.isMuted)
             displayedChannelID = library.selected?.id
@@ -613,11 +713,16 @@ struct VideoStage: NSViewRepresentable {
             let fadeHeight = max(cornerCenterInset * 2, bounds.height * 0.1)
             volumeBackdrop.frame = NSRect(x: bounds.minX, y: bounds.minY, width: bounds.width, height: fadeHeight)
             topBackdrop.frame = NSRect(x: bounds.minX, y: bounds.maxY - fadeHeight, width: bounds.width, height: fadeHeight)
-            miniPlayerButton.frame = NSRect(x: bounds.maxX - cornerCenterInset - buttonSide / 2, y: bounds.maxY - cornerCenterInset - buttonSide / 2, width: buttonSide, height: buttonSide)
+            miniPlayerButton.frame = NSRect(x: topBackdrop.bounds.maxX - cornerCenterInset - buttonSide / 2, y: topBackdrop.bounds.maxY - cornerCenterInset - buttonSide / 2, width: buttonSide, height: buttonSide)
             powerButton.frame = NSRect(x: miniPlayerButton.frame.minX - buttonSide - 4, y: miniPlayerButton.frame.minY,
                                        width: buttonSide, height: buttonSide)
+            previousChannelButton.frame = NSRect(x: cornerCenterInset - buttonSide / 2,
+                                                y: volumeBackdrop.bounds.minY + cornerCenterInset - buttonSide / 2,
+                                                width: buttonSide, height: buttonSide)
             let volumeSize = volumeControl.intrinsicContentSize
-            volumeControl.frame = NSRect(x: max(8, bounds.maxX - volumeSize.width - controlInset), y: bounds.minY + cornerCenterInset - volumeSize.height / 2, width: min(volumeSize.width, max(0, bounds.width - controlInset)), height: volumeSize.height)
+            let volumeWidth = min(volumeSize.width, max(0, bounds.maxX - controlInset - previousChannelButton.frame.maxX - 8))
+            volumeControl.frame = NSRect(x: volumeBackdrop.bounds.maxX - volumeWidth - controlInset, y: volumeBackdrop.bounds.minY + cornerCenterInset - volumeSize.height / 2,
+                                         width: volumeWidth, height: volumeSize.height)
             sidebarButton.frame = NSRect(x: 0, y: bounds.midY - 28, width: 28, height: 56)
             if pointerInVideo && !containsCurrentPointer() {
                 pointerInVideo = false
@@ -625,6 +730,8 @@ struct VideoStage: NSViewRepresentable {
             }
             spinner.frame = NSRect(x: bounds.midX - 16, y: bounds.midY + 4, width: 32, height: 32)
             label.frame = NSRect(x: 20, y: bounds.midY - 32, width: max(0, bounds.width - 40), height: 24)
+            volumeBackdrop.refreshCursorRects(); topBackdrop.refreshCursorRects()
+            updateCursorRegions()
         }
     }
 }

@@ -53,7 +53,7 @@ private struct PlaybackMenu: View {
         Button("重新播放") { library.reloadCurrentChannel() }.disabled(library.selected == nil)
         Button("停止播放") { library.stopPlayback() }.disabled(library.selected == nil)
         Button(library.previousChannel.map { "返回上一观看频道 · \($0.displayName)" } ?? "返回上一观看频道") {
-            if let previous = library.previousChannel { library.play(previous) }
+            library.playPreviousChannel()
         }
         .disabled(library.previousChannel == nil)
         Divider()

@@ -21,7 +21,8 @@ import SwiftUI
         for hour in 0..<24 {
             let nextDay = hour == 23 ? "08" : "07"
             let title = hour == 15 ? "知否知否应是绿肥红瘦（52）" : "第\(hour + 1)档节目 · 电视剧场与新闻资讯"
-            xml += "<programme channel=\"test\" start=\"20261107\(String(format: "%02d", hour))0000 +0800\" stop=\"202611\(nextDay)\(String(format: "%02d", (hour + 1) % 24))0000 +0800\"><title>\(title)</title></programme>"
+            let startMinute = hour == 15 ? "05" : "00"
+            xml += "<programme channel=\"test\" start=\"20261107\(String(format: "%02d", hour))\(startMinute)00 +0800\" stop=\"202611\(nextDay)\(String(format: "%02d", (hour + 1) % 24))0000 +0800\"><title>\(title)</title></programme>"
         }
         xml += "</tv>"
         let channel = Channel(name: "北京卫视", group: "卫视", url: URL(string: "https://example.com/live")!)
@@ -115,6 +116,24 @@ import SwiftUI
             precondition(edgeFill > 0.02, "The programme highlight must reach the pane's right edge")
         }
         try await settle()
+        checkPosition(normalHost); checkPosition(fullscreenHost)
+
+        // A gap must keep the next programme centred and visibly highlighted in
+        // both presentations, then switch its label when the programme starts.
+        at = ISO8601DateFormatter().date(from: "2026-11-07T07:02:00Z")!
+        store.resume(); try await settle()
+        precondition(store.titles[channel.id]?.hasPrefix("即将播出 · ") == true)
+        checkPosition(normalHost); checkPosition(fullscreenHost)
+        let upcomingPreview = CommandLine.arguments.count > 2 ? CommandLine.arguments[2]
+            : ProcessInfo.processInfo.environment["SOFATV_UPCOMING_PREVIEW"]
+        if let upcomingPreview {
+            let bitmap = content.bitmapImageRepForCachingDisplay(in: content.bounds)!
+            content.cacheDisplay(in: content.bounds, to: bitmap)
+            try bitmap.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: upcomingPreview))
+        }
+        at = ISO8601DateFormatter().date(from: "2026-11-07T07:05:00Z")!
+        store.resume(); try await settle()
+        precondition(store.titles[channel.id]?.hasPrefix("即将播出") == false)
         checkPosition(normalHost); checkPosition(fullscreenHost)
 
         normal.hover(otherChannel, in: .embedded, inside: true)

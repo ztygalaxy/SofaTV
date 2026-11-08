@@ -29,13 +29,32 @@ struct ProgramGuide: Codable, Sendable {
     struct Schedule: Equatable, Sendable {
         let programs: [CurrentProgram]
 
+        struct Highlight: Equatable, Sendable {
+            let program: CurrentProgram
+            let isUpcoming: Bool
+
+            func badge(isPlayingChannel: Bool) -> String {
+                isUpcoming ? "即将播出" : (isPlayingChannel ? "当前节目" : "正在播出")
+            }
+            func subtitle(timeZone: TimeZone = .current) -> String {
+                (isUpcoming ? "即将播出 · " : "") + program.subtitle(timeZone: timeZone)
+            }
+        }
+
         func programs(on day: Date, calendar: Calendar = .current) -> [CurrentProgram] {
             guard let interval = calendar.dateInterval(of: .day, for: day) else { return [] }
             return programs.filter { $0.start < interval.end && $0.end > interval.start }
         }
 
+        static func highlight(in programs: [CurrentProgram], at date: Date) -> Highlight? {
+            if let current = programs.first(where: { $0.contains(date) }) {
+                return Highlight(program: current, isUpcoming: false)
+            }
+            return programs.first(where: { $0.start > date }).map { Highlight(program: $0, isUpcoming: true) }
+        }
+
         static func scrollTarget(in programs: [CurrentProgram], at date: Date) -> CurrentProgram? {
-            programs.first { $0.contains(date) } ?? programs.first { $0.start > date } ?? programs.last
+            highlight(in: programs, at: date)?.program ?? programs.last
         }
     }
 
@@ -85,6 +104,16 @@ struct ProgramGuide: Codable, Sendable {
             if let current = fallback.currentProgram(channel: channel, at: date) { return current }
         }
         return nil
+    }
+
+    /// Keep live programme matching strict. Only presentation falls forward to
+    /// the next entry, using the same source-priority/clipping rules as the pane.
+    func highlightedProgram(channel: Channel, at date: Date = Date(), calendar: Calendar = .current) -> Schedule.Highlight? {
+        if let current = currentProgram(channel: channel, at: date) {
+            return Schedule.Highlight(program: current, isUpcoming: false)
+        }
+        let today = schedule(channel: channel).programs(on: date, calendar: calendar)
+        return Schedule.highlight(in: today, at: date)
     }
 
     /// Use the same source priority and overlap rules for the full schedule and current title.

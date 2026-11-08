@@ -161,9 +161,9 @@ struct OnlineChannelTests {
         let legacy = ChannelList(id: "builtin", name: "内置频道", detail: "随应用提供", kind: .builtIn, importedAt: Date(), channels: [old])
         // Exercise the old persisted shape, without any of the new optional fields.
         preferences.defaults.set(try JSONEncoder().encode([legacy]), forKey: "channel-lists")
-        preferences.defaults.set([old.id], forKey: "favorites")
-        preferences.defaults.set(0.65, forKey: "volume-" + old.id)
-        preferences.defaults.set(old.url.absoluteString, forKey: "line-" + old.id)
+        preferences.defaults.set([old.url.absoluteString], forKey: "favorites")
+        preferences.defaults.set(0.65, forKey: "volume-" + old.url.absoluteString)
+        preferences.defaults.set(old.url.absoluteString, forKey: "line-" + old.url.absoluteString)
         let fixture = SourceFixture(Self.playlist)
         let app = try library(preferences, fixture: fixture)
         #expect(app.channels == [old] && app.channelLists[0].kind == .online)

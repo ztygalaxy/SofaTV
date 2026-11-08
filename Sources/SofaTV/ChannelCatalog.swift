@@ -5,8 +5,10 @@ struct Channel: Identifiable, Codable, Hashable, Sendable {
         let name: String
         let group: String
         init(_ channel: Channel) { name = channel.name; group = channel.group }
+        var key: String { "name:\(group.utf8.count):\(group)\(name.utf8.count):\(name)" }
     }
-    var id: String { url.absoluteString }
+    // Matches catalogue merging and stays independent of mutable playback URLs.
+    var id: String { identity.key }
     var identity: Identity { Identity(self) }
     var alternatives: [URL]? = nil
     var sources: [URL] { [url] + (alternatives ?? []) }
@@ -21,7 +23,7 @@ struct Channel: Identifiable, Codable, Hashable, Sendable {
     var displayGroup: String { customGroup ?? group }
     var preferenceKey: String {
         if let id = epgID?.trimmingCharacters(in: .whitespacesAndNewlines), !id.isEmpty { return "epg:" + id }
-        return "name:\(group.utf8.count):\(group)\(name.utf8.count):\(name)"
+        return id
     }
     func matches(_ query: String) -> Bool {
         query.isEmpty || [name, group, displayName, displayGroup].contains { $0.localizedCaseInsensitiveContains(query) }
