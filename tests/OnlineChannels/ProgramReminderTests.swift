@@ -10,6 +10,7 @@ import SwiftUI
     var allowed = true
     var authorizations = 0
     var pending: [String: ProgramReminder] = [:]
+    var delivered: Set<String> = []
     var additions: [ProgramReminder] = []
     var hold = false
     var waiting: CheckedContinuation<Void, Never>?
@@ -23,7 +24,12 @@ import SwiftUI
         if fail { throw URLError(.cannotConnectToHost) }
         pending[reminder.notificationID] = reminder
     }
-    func remove(_ identifiers: [String], delivered: Bool) { for identifier in identifiers { pending.removeValue(forKey: identifier) } }
+    func remove(_ identifiers: [String], delivered: Bool) {
+        for identifier in identifiers {
+            pending.removeValue(forKey: identifier)
+            if delivered { self.delivered.remove(identifier) }
+        }
+    }
     func release() { hold = false; let value = waiting; waiting = nil; value?.resume() }
 }
 
@@ -203,7 +209,7 @@ struct ProgramReminderTests {
         #expect(watched == 2)
     }
 
-    @Test func remindersExpireTwentySecondsAfterDeliveryWithoutRearming() async throws {
+    @Test func pendingRequestsExpireTwentySecondsAfterTriggerWithoutRearming() async throws {
         let f = Fixture(); defer { f.clean() }
         let original = program(f)
         try await f.store.toggle(original, channel: channel)
@@ -212,10 +218,39 @@ struct ProgramReminderTests {
         f.date = saved.fireDate.addingTimeInterval(19)
         f.store.refresh(); await f.store.synchronize()
         #expect(f.notifications.pending[saved.notificationID] != nil)
-        f.date = saved.expiresAt
+        f.date = saved.pendingDeliveryDeadline
         f.store.refresh(); await f.store.synchronize()
         #expect(f.notifications.pending.isEmpty && f.notifications.additions.count == 1)
         #expect(f.store.reminders.count == 1, "Expiring a notification keeps the programme available in the reminder list")
+    }
+
+    @Test func deliveredNotificationsSurviveCleanupAndRemainClickableAfterRestart() async throws {
+        let f = Fixture(); defer { f.clean() }
+        let original = program(f)
+        try await f.store.toggle(original, channel: channel)
+        let saved = try #require(f.store.reminders.first)
+        f.notifications.pending.removeValue(forKey: saved.notificationID)
+        f.notifications.delivered.insert(saved.notificationID)
+
+        f.date = saved.pendingDeliveryDeadline
+        f.store.refresh(); await f.store.synchronize()
+        #expect(f.notifications.delivered == [saved.notificationID])
+
+        f.date = original.start.addingTimeInterval(60)
+        let restored = ProgramReminderStore(defaults: f.defaults, notifications: f.notifications, now: { f.date })
+        restored.start(); await restored.synchronize()
+        var renamed = channel
+        renamed.customName = "我的频道"
+        restored.reconcile(channels: [renamed], programs: { _ in [original] })
+        await restored.synchronize()
+        #expect(f.notifications.delivered == [saved.notificationID])
+        #expect(f.notifications.additions.count == 1)
+
+        var watched: ProgramReminder?
+        restored.onWatch = { watched = $0; return true }
+        f.notifications.onWatch?(saved.notificationID)
+        #expect(watched?.id == saved.id && watched?.channelName == renamed.displayName)
+        #expect(f.notifications.delivered.isEmpty && restored.reminders.isEmpty)
     }
 
     @Test func bookingInsideTheLeadWindowNotifiesPromptly() async throws {
@@ -223,7 +258,7 @@ struct ProgramReminderTests {
         try await f.store.toggle(program(f, offset: 5), channel: channel)
         let saved = try #require(f.store.reminders.first)
         #expect(saved.fireDate == f.date.addingTimeInterval(1))
-        #expect(saved.expiresAt == saved.fireDate.addingTimeInterval(20))
+        #expect(saved.pendingDeliveryDeadline == saved.fireDate.addingTimeInterval(20))
         #expect(f.notifications.pending.count == 1)
     }
 

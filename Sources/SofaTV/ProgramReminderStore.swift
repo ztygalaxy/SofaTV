@@ -20,7 +20,7 @@ import Combine
     private var needsSync = false
     private var waiters: [CheckedContinuation<Void, Never>] = []
     private var authorizationTask: Task<Bool, Error>?
-    private var expiryTask: Task<Void, Never>?
+    private var pendingCleanupTask: Task<Void, Never>?
     private static let preference = "program-reminders-v1"
 
     init(defaults: UserDefaults = .standard, notifications: any ProgramReminderNotifications = SystemProgramReminderNotifications(),
@@ -32,7 +32,7 @@ import Combine
         notifications.onWatch = { [weak self] in self?.requestWatch(notificationID: $0) }
         notifications.onIgnore = { [weak self] in self?.ignore(notificationID: $0) }
     }
-    deinit { expiryTask?.cancel() }
+    deinit { pendingCleanupTask?.cancel() }
     var currentDate: Date { now() }
     func start() { notifications.configure(); refresh(); consumePendingWatch() }
     func reminder(for program: ProgramGuide.CurrentProgram, channel: Channel) -> ProgramReminder? {
@@ -87,13 +87,13 @@ import Combine
         }
         if updated != reminders {
             let changed = zip(reminders, updated).filter { $0.signature != $1.signature }.map { $0.0.notificationID }
-            notifications.remove(changed, delivered: true)
+            notifications.remove(changed, delivered: false)
             reminders = updated; persist()
         }
         refresh()
     }
     func refresh() {
-        notifications.remove(reminders.filter { $0.expiresAt <= now() }.map(\.notificationID), delivered: true)
+        notifications.remove(reminders.filter { $0.pendingDeliveryDeadline <= now() }.map(\.notificationID), delivered: false)
         let expired = reminders.filter { $0.end < now().addingTimeInterval(-86400) }
         if !expired.isEmpty {
             notifications.remove(expired.map(\.notificationID), delivered: true)
@@ -137,26 +137,25 @@ import Combine
                 await self.syncOnce()
             }
             self.syncTask = nil
-            self.scheduleExpiry()
+            self.schedulePendingCleanup()
             let waiters = self.waiters; self.waiters.removeAll()
             for waiter in waiters { waiter.resume() }
         }
     }
-    private func scheduleExpiry() {
-        expiryTask?.cancel(); expiryTask = nil
-        guard let deadline = reminders.map(\.expiresAt).filter({ $0 > now() }).min() else { return }
+    private func schedulePendingCleanup() {
+        pendingCleanupTask?.cancel(); pendingCleanupTask = nil
+        guard let deadline = reminders.map(\.pendingDeliveryDeadline).filter({ $0 > now() }).min() else { return }
         let delay = max(0.05, deadline.timeIntervalSince(now()))
-        expiryTask = Task { [weak self] in
+        pendingCleanupTask = Task { [weak self] in
             do { try await Task.sleep(for: .seconds(delay)) } catch { return }
             self?.refresh()
         }
     }
     private func syncOnce() async {
         let pending = await notifications.pendingSignatures()
-        // A due request may still be queued by macOS (for example during wake).
-        // Keep it until explicit cancellation; passing the start must not race
-        // the system's delivery. Only future requests can be newly scheduled.
-        let desired = reminders.filter { channelAvailable(for: $0) && $0.expiresAt > now() }
+        // Give macOS time to deliver a due request, for example during wake.
+        // Only future requests can be newly scheduled.
+        let desired = reminders.filter { channelAvailable(for: $0) && $0.pendingDeliveryDeadline > now() }
         let desiredIDs = Set(desired.map(\.notificationID))
         notifications.remove(pending.keys.filter { !desiredIDs.contains($0) }, delivered: false)
         for reminder in desired {
@@ -170,8 +169,9 @@ import Combine
             }
             // A cancel or schedule update while awaiting the native center is
             // followed by another pass, so a late add cannot revive old work.
-            if !reminders.contains(reminder) || !channelAvailable(for: reminder) || reminder.expiresAt <= now() {
-                notifications.remove([reminder.notificationID], delivered: true)
+            let current = reminders.first { $0.id == reminder.id }
+            if current != reminder || !channelAvailable(for: reminder) || reminder.pendingDeliveryDeadline <= now() {
+                notifications.remove([reminder.notificationID], delivered: current == nil)
                 needsSync = true
             }
         }

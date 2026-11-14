@@ -11,7 +11,7 @@ struct ProgramReminder: Codable, Equatable, Identifiable, Sendable {
     var end: Date
     var scheduledDate: Date? = nil
     var fireDate: Date { scheduledDate ?? start.addingTimeInterval(-10) }
-    var expiresAt: Date { fireDate.addingTimeInterval(20) }
+    var pendingDeliveryDeadline: Date { fireDate.addingTimeInterval(20) }
 
     init(channel: Channel, program: ProgramGuide.CurrentProgram, id: UUID = UUID()) {
         self.id = id; channelKey = channel.preferenceKey; channelIdentity = channel.identity
