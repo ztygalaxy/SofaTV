@@ -6,6 +6,7 @@ final class AboutWindowController: NSWindowController {
 
     private var licensesController: NSWindowController?
     private weak var licenseText: NSTextView?
+    private var localizeContents: (() -> Void)?
 
     private init() {
         let window = NSWindow(
@@ -15,11 +16,11 @@ final class AboutWindowController: NSWindowController {
             defer: false
         )
         window.isReleasedWhenClosed = false
-        window.title = "关于沙发电视"
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         super.init(window: window)
         buildContents(in: window)
+        NotificationCenter.default.addObserver(self, selector: #selector(refreshLanguage), name: L10n.didChange, object: L10n.shared)
     }
 
     required init?(coder: NSCoder) {
@@ -57,7 +58,7 @@ final class AboutWindowController: NSWindowController {
         ])
         stack.addArrangedSubview(icon)
 
-        let name = label("SofaTV / 沙发电视", identifier: "About.name", size: 24, weight: .bold)
+        let name = label("", identifier: "About.name", size: 24, weight: .bold)
         stack.addArrangedSubview(name)
         stack.setCustomSpacing(10, after: name)
 
@@ -65,7 +66,7 @@ final class AboutWindowController: NSWindowController {
         details.orientation = .vertical
         details.alignment = .centerX
         details.spacing = 3
-        let description = label("坐回沙发，好好看电视。", identifier: "About.description", size: 13)
+        let description = label("", identifier: "About.description", size: 13)
         details.addArrangedSubview(description)
         let version = label(versionText, identifier: "About.version", size: 13)
         version.textColor = .secondaryLabelColor
@@ -80,9 +81,10 @@ final class AboutWindowController: NSWindowController {
         let links = NSStackView()
         links.orientation = .horizontal
         links.spacing = 16
-        links.addArrangedSubview(linkButton("项目主页", identifier: "About.project", action: #selector(openProject)))
-        links.addArrangedSubview(linkButton("问题反馈", identifier: "About.feedback", action: #selector(openFeedback)))
-        links.addArrangedSubview(linkButton("开源许可", identifier: "About.licenses", action: #selector(showLicenses)))
+        let project = linkButton(identifier: "About.project", action: #selector(openProject))
+        let feedback = linkButton(identifier: "About.feedback", action: #selector(openFeedback))
+        let licenses = linkButton(identifier: "About.licenses", action: #selector(showLicenses))
+        for button in [project, feedback, licenses] { links.addArrangedSubview(button) }
         stack.addArrangedSubview(links)
 
         let attribution = label("Build by ztygalaxy with his friends.", identifier: "About.attribution", size: 11)
@@ -99,6 +101,14 @@ final class AboutWindowController: NSWindowController {
         stack.addArrangedSubview(attribution)
         stack.setCustomSpacing(18, after: links)
 
+        localizeContents = {
+            name.stringValue = L10n.text("SofaTV / 沙发电视")
+            description.stringValue = L10n.text("坐回沙发，好好看电视。")
+            project.title = L10n.text("项目主页")
+            feedback.title = L10n.text("问题反馈")
+            licenses.title = L10n.text("开源许可")
+        }
+        refreshLanguage()
         contentView.layoutSubtreeIfNeeded()
         window.setContentSize(NSSize(width: 520, height: max(300, ceil(stack.fittingSize.height) + 56)))
         window.center()
@@ -122,8 +132,8 @@ final class AboutWindowController: NSWindowController {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
     }
 
-    private func linkButton(_ title: String, identifier: String, action: Selector) -> NSButton {
-        let button = NSButton(title: title, target: self, action: action)
+    private func linkButton(identifier: String, action: Selector) -> NSButton {
+        let button = NSButton(title: "", target: self, action: action)
         button.identifier = NSUserInterfaceItemIdentifier(identifier)
         button.bezelStyle = .inline
         button.isBordered = false
@@ -147,6 +157,13 @@ final class AboutWindowController: NSWindowController {
         licensesController?.window?.makeKeyAndOrderFront(nil)
     }
 
+    @objc private func refreshLanguage() {
+        window?.title = L10n.text("关于沙发电视")
+        localizeContents?()
+        licensesController?.window?.title = L10n.text("开源许可")
+        refreshLicenses()
+    }
+
     private func makeLicensesWindow() {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 640, height: 520),
@@ -155,7 +172,7 @@ final class AboutWindowController: NSWindowController {
             defer: false
         )
         window.isReleasedWhenClosed = false
-        window.title = "开源许可"
+        window.title = L10n.text("开源许可")
         window.minSize = NSSize(width: 420, height: 300)
 
         let scroll = AppScrollView(frame: window.contentView?.bounds ?? .zero)
@@ -181,11 +198,11 @@ final class AboutWindowController: NSWindowController {
 
     private func refreshLicenses() {
         guard let licenseText else { return }
-        var content = "沙发电视采用 GPL-3.0-only 许可，第三方组件和素材保留各自许可。\n\n"
+        var content = L10n.text("沙发电视采用 GPL-3.0-only 许可，第三方组件和素材保留各自许可。\n\n")
         let titles = [
-            "SofaTV-GPL-3.0.txt": "沙发电视开源许可",
-            "Channel-Logos-Source.md": "频道台标来源",
-            "Channel-Logos-GPL-3.0.txt": "频道台标开源许可"
+            "SofaTV-GPL-3.0.txt": L10n.text("沙发电视开源许可"),
+            "Channel-Logos-Source.md": L10n.text("频道台标来源"),
+            "Channel-Logos-GPL-3.0.txt": L10n.text("频道台标开源许可")
         ]
         let orderedFiles = ["SofaTV-GPL-3.0.txt", "Channel-Logos-Source.md", "Channel-Logos-GPL-3.0.txt"]
         if let directory = Bundle.main.resourceURL?.appendingPathComponent("Licenses", isDirectory: true) {
@@ -196,7 +213,7 @@ final class AboutWindowController: NSWindowController {
             }
         }
         if !content.contains("GNU GENERAL PUBLIC LICENSE") {
-            content += "此构建中缺少许可文件。"
+            content += L10n.text("此构建中缺少许可文件。")
         }
         let position = licenseText.enclosingScrollView?.contentView.bounds.origin ?? .zero
         licenseText.string = content

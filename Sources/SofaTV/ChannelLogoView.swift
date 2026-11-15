@@ -15,7 +15,7 @@ struct AppLogoView: View {
             }
         }
         .frame(width: size, height: size)
-        .accessibilityLabel("沙发电视")
+        .accessibilityLabel(L10n.text("沙发电视"))
     }
 }
 

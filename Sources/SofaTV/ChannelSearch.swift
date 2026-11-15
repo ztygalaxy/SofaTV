@@ -1,24 +1,69 @@
 import SwiftUI
 
+struct ChannelBrowserHeader: View {
+    @Binding var favoritesOnly: Bool
+    @Binding var search: String
+    var scale: CGFloat = 1
+    let onMinimumWidthChange: (CGFloat) -> Void
+
+    var body: some View {
+        let spacing = 10 * scale
+        HStack(spacing: 0) {
+            measure(ChannelFilterTabs(favoritesOnly: $favoritesOnly, contentScale: scale))
+            Spacer(minLength: spacing)
+            measure(ChannelSearchField(text: $search, scale: scale))
+        }
+        .onPreferenceChange(ItemWidths.self) { width in
+            if width > 0 { onMinimumWidthChange(ceil(width + spacing)) }
+        }
+    }
+
+    private func measure<Content: View>(_ content: Content) -> some View {
+        content
+            .fixedSize(horizontal: true, vertical: false)
+            .background {
+                GeometryReader { geometry in
+                    Color.clear.preference(key: ItemWidths.self, value: geometry.size.width)
+                }
+            }
+    }
+
+    private struct ItemWidths: PreferenceKey {
+        static let defaultValue: CGFloat = 0
+        static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+            value += nextValue()
+        }
+    }
+}
+
 struct ChannelSearchField: View {
     @Binding var text: String
     var scale: CGFloat = 1
 
     var body: some View {
+        let placeholder = L10n.text("搜索频道或节目")
+        let clearIcon = Image(systemName: "xmark.circle.fill")
         HStack(spacing: 5 * scale) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
-            TextField("搜索频道或节目", text: $text)
-                .textFieldStyle(.plain)
-                .accessibilityLabel("搜索频道或节目")
-            if !text.isEmpty {
-                Button { text = "" } label: {
-                    Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+            Text(placeholder)
+                .fixedSize()
+                .hidden()
+                .overlay(alignment: .leading) {
+                    TextField(placeholder, text: $text)
+                        .textFieldStyle(.plain)
+                        .accessibilityLabel(placeholder)
                 }
-                .buttonStyle(.plain)
-                .help("清除搜索")
-                .accessibilityLabel("清除搜索")
+            clearIcon.hidden().overlay {
+                if !text.isEmpty {
+                    Button { text = "" } label: {
+                        clearIcon.foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help(L10n.text("清除搜索"))
+                    .accessibilityLabel(L10n.text("清除搜索"))
+                }
             }
         }
         .font(.system(size: 13 * scale))
@@ -37,8 +82,8 @@ struct ProgramSearchRows: View {
     let onPlay: (ProgramGuideStore.ProgramMatch) -> Void
 
     var body: some View {
-        rows(results.live, heading: "正在播出", isLive: true)
-        rows(results.upcoming, heading: "即将播出", isLive: false)
+        rows(results.live, heading: L10n.text("正在播出"), isLive: true)
+        rows(results.upcoming, heading: L10n.text("即将播出"), isLive: false)
     }
 
     @ViewBuilder private func rows(_ matches: [ProgramGuideStore.ProgramMatch], heading: String, isLive: Bool) -> some View {
@@ -77,7 +122,7 @@ struct ProgramSearchRows: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("观看\(match.channel.displayName)的\(match.program.title)")
+            .accessibilityLabel(L10n.text("观看\(match.channel.displayName)的\(match.program.title)"))
             .accessibilityHint(match.program.timeRange())
         } else {
             HStack(spacing: 8 * scale) {
@@ -94,7 +139,7 @@ struct ProgramSearchRows: View {
     private func details(for match: ProgramGuideStore.ProgramMatch) -> some View {
         let start = match.program.start
         let day = Calendar.current.isDate(start, inSameDayAs: date)
-            ? "" : start.formatted(.dateTime.month().day()) + " "
+            ? "" : start.formatted(.dateTime.month().day().locale(L10n.locale)) + " "
         return VStack(alignment: .leading, spacing: 4 * scale) {
             Text(match.program.title)
                 .font(.system(size: 14 * scale, weight: .medium))

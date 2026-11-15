@@ -15,7 +15,7 @@ struct ResolvedWebMedia: Sendable {
     let webView: WKWebView
     private var generation = UUID()
     private var completion: ((ResolvedWebMedia) -> Void)?
-    private var failure: ((String) -> Void)?
+    private var failure: ((String.LocalizationValue) -> Void)?
     private var candidates = Set<String>()
     private var active = false
     private var videoCompletion: ((Bool) -> Void)?
@@ -76,7 +76,7 @@ struct ResolvedWebMedia: Sendable {
         configuration.userContentController.addUserScript(WKUserScript(source: Self.script, injectionTime: .atDocumentStart, forMainFrameOnly: false))
         webView.navigationDelegate = self
     }
-    func resolve(_ url: URL, completion: @escaping (ResolvedWebMedia) -> Void, failure: @escaping (String) -> Void) {
+    func resolve(_ url: URL, completion: @escaping (ResolvedWebMedia) -> Void, failure: @escaping (String.LocalizationValue) -> Void) {
         cancel(); active = true; candidates = []; self.completion = completion; self.failure = failure
         webView.load(URLRequest(url: url))
     }
@@ -207,7 +207,7 @@ struct ResolvedWebMedia: Sendable {
     }
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         guard active, (error as NSError).code != NSURLErrorCancelled else { return }
-        failure?("频道网页加载失败：" + error.localizedDescription)
+        failure?("频道网页加载失败：\(error.localizedDescription)")
     }
     private static let script = #"""
     (() => {

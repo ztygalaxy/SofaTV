@@ -82,6 +82,6 @@ struct ChannelConfigurationBackup: Codable {
     }
     enum BackupError: LocalizedError {
         case invalid
-        var errorDescription: String? { "这不是受支持的沙发电视频道配置文件。" }
+        var errorDescription: String? { L10n.text("这不是受支持的沙发电视频道配置文件。") }
     }
 }

@@ -46,10 +46,10 @@ enum ProgramReminderError: LocalizedError {
     case alreadyStarted, notificationsDisabled, unavailable, scheduling(String)
     var errorDescription: String? {
         switch self {
-        case .alreadyStarted: "节目已经开始，无法再添加节目预约。"
-        case .notificationsDisabled: "请在“系统设置 → 通知”中允许沙发电视发送通知，再添加预约。"
-        case .unavailable: "当前运行环境无法使用系统通知，请从沙发电视 App 中添加预约。"
-        case .scheduling(let reason): "预约未能生效：\(reason)"
+        case .alreadyStarted: L10n.text("节目已经开始，无法再添加节目预约。")
+        case .notificationsDisabled: L10n.text("请在“系统设置 → 通知”中允许沙发电视发送通知，再添加预约。")
+        case .unavailable: L10n.text("当前运行环境无法使用系统通知，请从沙发电视 App 中添加预约。")
+        case .scheduling(let reason): L10n.text("预约未能生效：\(reason)")
         }
     }
 }

@@ -26,8 +26,7 @@ cp .build/AppIcon.icns "$app_bundle/Contents/Resources/"
 cp .build/Television.png "$app_bundle/Contents/Resources/"
 cp -R Assets/ChannelLogos "$app_bundle/Contents/Resources/"
 cp -R Assets/PlaybackControls "$app_bundle/Contents/Resources/"
-mkdir -p "$app_bundle/Contents/Resources/zh-Hans.lproj"
-cp Assets/zh-Hans.lproj/InfoPlist.strings "$app_bundle/Contents/Resources/zh-Hans.lproj/"
+cp -R Assets/en.lproj Assets/zh-Hans.lproj "$app_bundle/Contents/Resources/"
 mkdir -p "$app_bundle/Contents/Resources/Licenses"
 cp LICENSE "$app_bundle/Contents/Resources/Licenses/SofaTV-GPL-3.0.txt"
 cp Assets/ChannelLogos/SOURCE.md "$app_bundle/Contents/Resources/Licenses/Channel-Logos-Source.md"
@@ -41,11 +40,12 @@ cat > "$app_bundle/Contents/Info.plist" <<PLIST
 <key>CFBundleIdentifier</key><string>local.sofatv.app</string>
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>CFBundleVersion</key><string>1</string>
-<key>CFBundleName</key><string>沙发电视</string>
-<key>CFBundleDisplayName</key><string>沙发电视</string>
-<key>CFBundleDevelopmentRegion</key><string>zh-Hans</string>
-<key>CFBundleLocalizations</key><array><string>zh-Hans</string></array>
+<key>CFBundleName</key><string>SofaTV</string>
+<key>CFBundleDisplayName</key><string>SofaTV</string>
+<key>CFBundleDevelopmentRegion</key><string>en</string>
+<key>CFBundleLocalizations</key><array><string>en</string><string>zh-Hans</string></array>
 <key>CFBundlePackageType</key><string>APPL</string>
+<key>NSUserNotificationAlertStyle</key><string>alert</string>
 <key>CFBundleShortVersionString</key><string>$version</string>
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>NSAppTransportSecurity</key><dict><key>NSAllowsArbitraryLoads</key><true/></dict>

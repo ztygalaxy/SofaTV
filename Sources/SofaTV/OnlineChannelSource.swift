@@ -52,8 +52,8 @@ enum OnlineChannelSource {
         case invalidPlaylist, unsupportedPlugin
         var errorDescription: String? {
             switch self {
-            case .invalidPlaylist: "下载的内容不是有效的频道列表。"
-            case .unsupportedPlugin: "频道列表包含尚不支持的插件地址，已保留原有频道。"
+            case .invalidPlaylist: L10n.text("下载的内容不是有效的频道列表。")
+            case .unsupportedPlugin: L10n.text("频道列表包含尚不支持的插件地址，已保留原有频道。")
             }
         }
     }

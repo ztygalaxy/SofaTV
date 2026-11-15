@@ -167,7 +167,7 @@ struct OnlineChannelTests {
         let fixture = SourceFixture(Self.playlist)
         let app = try library(preferences, fixture: fixture)
         #expect(app.channels == [old] && app.channelLists[0].kind == .online)
-        app.selected = old; app.playbackStatus = "正在播放测试节目"
+        app.selected = old; app.playbackStatusText = "正在播放测试节目"
         app.startOnlineUpdates()
         try await settle(app)
         let refreshed = try #require(app.channels.first)

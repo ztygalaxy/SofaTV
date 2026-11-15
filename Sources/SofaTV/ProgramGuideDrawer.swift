@@ -32,7 +32,7 @@ private struct ProgramGuideDrawer: View {
             VStack(spacing: 4 * scale) {
                 ChannelLogoView(channelName: channel.name, isSelected: false, contentScale: scale * 0.72)
                 Text(channel.displayName).font(.system(size: 14 * scale, weight: .semibold)).lineLimit(1)
-                Text("节目单").font(.system(size: 11 * scale)).foregroundStyle(.secondary)
+                Text(L10n.text("节目单")).font(.system(size: 11 * scale)).foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity)
             .padding(14 * scale)
@@ -40,8 +40,8 @@ private struct ProgramGuideDrawer: View {
             if programs.isEmpty {
                 VStack(spacing: 10 * scale) {
                     Image(systemName: "calendar").font(.system(size: 26 * scale)).foregroundStyle(.secondary)
-                    Text("暂无节目单").font(.system(size: 14 * scale, weight: .medium))
-                    Text("暂未找到这一天的节目信息").font(.system(size: 11 * scale)).foregroundStyle(.secondary)
+                    Text(L10n.text("暂无节目单")).font(.system(size: 14 * scale, weight: .medium))
+                    Text(L10n.text("暂未找到这一天的节目信息")).font(.system(size: 11 * scale)).foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -51,22 +51,22 @@ private struct ProgramGuideDrawer: View {
             }
             HStack {
                 if let reminders = store.reminders {
-                    Button("节目预约…") { ProgramReminderWindow.show(reminders) }.buttonStyle(.plain)
+                    Button(L10n.text("节目预约…")) { ProgramReminderWindow.show(reminders) }.buttonStyle(.plain)
                 }
                 Spacer()
-                Button("回到当前", action: returnToCurrent)
+                Button(L10n.text("回到当前"), action: returnToCurrent)
                     .buttonStyle(.plain)
                     .disabled(!canReturnToCurrent)
-                    .help("定位正在播放的频道及当前节目")
+                    .help(L10n.text("定位正在播放的频道及当前节目"))
             }
             .font(.system(size: 11 * scale))
             .padding(.horizontal, 14 * scale)
             .frame(height: (fullscreen ? 36 : 32) * scale)
         }
         .background(ProgramGuideGlass(fullscreen: fullscreen))
-        .overlay(alignment: .trailing) { Color.white.opacity(0.09).frame(width: 1) }
+        .overlay(alignment: .trailing) { Color.primary.opacity(0.09).frame(width: 1) }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(channel.displayName)节目单")
+        .accessibilityLabel(L10n.text("\(channel.displayName)节目单"))
     }
 
 }
@@ -80,7 +80,7 @@ private struct ProgramGuideRow: View {
     let channel: Channel
     let reminders: ProgramReminderStore?
     private var scale: CGFloat { fullscreen ? 1.3 : 1 }
-    private var currentHighlight: Color { isPlayingChannel ? .sofaAccent : .white }
+    private var currentHighlight: Color { isPlayingChannel ? .sofaAccent : .primary }
 
     var body: some View {
         let highlighted = highlight?.program == program
@@ -104,7 +104,7 @@ private struct ProgramGuideRow: View {
         }
         .padding(.horizontal, 16 * scale).padding(.vertical, 13 * scale)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(highlighted ? (fullscreen ? 0.07 : 0.10) : 0))
+        .background(Color.primary.opacity(highlighted ? (fullscreen ? 0.07 : 0.10) : 0))
         .overlay(alignment: .leading) { if highlighted { currentHighlight.frame(width: 3) } }
         .accessibilityElement(children: .contain)
     }
@@ -169,7 +169,6 @@ private struct ProgramGuideScrollView: NSViewRepresentable {
                                     channel: configuration.channel, reminders: configuration.reminders)
                         .frame(width: size.width)
                         .fixedSize(horizontal: false, vertical: true)
-                        .preferredColorScheme(.dark)
                 )
                 host.layoutSubtreeIfNeeded()
                 let height = ceil(host.fittingSize.height)
@@ -196,7 +195,6 @@ private struct ProgramGuideGlass: NSViewRepresentable {
     let fullscreen: Bool
     func makeNSView(context: Context) -> NSVisualEffectView {
         let view = GlassView()
-        view.appearance = NSAppearance(named: .darkAqua)
         view.material = .underWindowBackground
         view.blendingMode = .withinWindow
         view.state = .active
@@ -263,7 +261,7 @@ final class ProgramGuideOverlayHost: NSView {
                                returnToCurrent: { [weak self] in self?.returnToCurrent() })
                 .id(preview.revealID)
                 .onHover { [weak preview, presentation] in preview?.hoverPanel($0, in: presentation) }
-                .preferredColorScheme(.dark)
+                .appLocale()
         )
     }
     private func show(_ channel: Channel?) {

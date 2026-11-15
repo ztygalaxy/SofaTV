@@ -39,11 +39,11 @@ struct ChannelRow: View, Equatable {
                 FavoriteStar(isFavorite: isFavorite, contentScale: contentScale)
                     .frame(width: 28 * contentScale, height: 36 * contentScale, alignment: .trailing)
                     .contentShape(Rectangle())
-            }.buttonStyle(FavoriteButtonStyle()).help("收藏频道")
+            }.buttonStyle(FavoriteButtonStyle()).help(L10n.text("收藏频道"))
                 .transaction { transaction in
                     transaction.animation = nil; transaction.disablesAnimations = true
                 }
-                .accessibilityLabel(isFavorite ? "取消收藏\(channel.displayName)" : "收藏\(channel.displayName)")
+                .accessibilityLabel(isFavorite ? L10n.text("取消收藏\(channel.displayName)") : L10n.text("收藏\(channel.displayName)"))
         }
         .padding(.horizontal, 12 * contentScale)
         .padding(.vertical, 6 * contentScale)
@@ -52,15 +52,15 @@ struct ChannelRow: View, Equatable {
         .frame(height: 56 * contentScale)
         .contextMenu {
             if allowsDeletion {
-                Menu("删除播放线路") {
+                Menu(L10n.text("删除播放线路")) {
                     ForEach(Array(channel.sources.enumerated()), id: \.offset) { index, source in
-                        Button("线路 \(index + 1) · \(source.scheme == "webview" ? "后台解析" : (source.host ?? source.absoluteString))", role: .destructive) {
+                        Button(L10n.text("线路 \(index + 1) · \(source.scheme == "webview" ? L10n.text("后台解析") : (source.host ?? source.absoluteString))"), role: .destructive) {
                             onDeleteSource(source)
                         }
                     }
                 }
                 Divider()
-                Button("删除频道…", role: .destructive, action: onDelete)
+                Button(L10n.text("删除频道…"), role: .destructive, action: onDelete)
             }
         }
     }

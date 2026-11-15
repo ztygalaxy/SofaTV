@@ -166,12 +166,16 @@ class VideoDetachedWindow: NSPanel {
         isMovable = mini
         isMovableByWindowBackground = mini
         if mini {
-            title = "沙发电视 · 置顶小窗"
+            refreshLanguage()
+            NotificationCenter.default.addObserver(self, selector: #selector(refreshLanguage), name: L10n.didChange, object: L10n.shared)
             contentAspectRatio = NSSize(width: 16, height: 9)
             contentMinSize = NSSize(width: 368, height: 207)
         }
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    @objc private func refreshLanguage() {
+        title = L10n.text("沙发电视 · 置顶小窗")
+    }
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
     override func performKeyEquivalent(with event: NSEvent) -> Bool {

@@ -15,8 +15,8 @@ struct EmptyPlaybackView: View {
                     .accessibilityHidden(true)
             }
             VStack(spacing: 8) {
-                Text("沙发电视").font(.title2.bold())
-                Text("坐回沙发，好好看电视。").font(.body)
+                Text(L10n.text("沙发电视")).font(.title2.bold())
+                Text(L10n.text("坐回沙发，好好看电视。")).font(.body)
             }
             .foregroundStyle(.secondary)
         }

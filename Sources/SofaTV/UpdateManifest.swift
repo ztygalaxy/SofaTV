@@ -51,9 +51,9 @@ enum UpdateManifestError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .tooLarge: "更新信息文件过大。"
-        case .invalid: "更新信息格式无效。"
-        case .unavailable: "没有适用于这台 Mac 的更新包。"
+        case .tooLarge: L10n.text("更新信息文件过大。")
+        case .invalid: L10n.text("更新信息格式无效。")
+        case .unavailable: L10n.text("没有适用于这台 Mac 的更新包。")
         }
     }
 }

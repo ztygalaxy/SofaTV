@@ -113,12 +113,12 @@ jobs:
           if gh release view "$tag" --json isDraft --jq .isDraft >/tmp/draft 2>/dev/null; then
             test "$(cat /tmp/draft)" = true || { echo "Release $tag is already published." >&2; exit 1; }
           else
-            gh release create "$tag" --draft --title "沙发电视 $VERSION" \
+            gh release create "$tag" --draft --title "SofaTV $VERSION" \
               --notes-file "$RUNNER_TEMP/release-notes.md"
           fi
           gh release upload "$tag" dist/SofaTV-* dist/update.json dist/SHA256SUMS --clobber
           gh release edit "$tag" --draft=false --prerelease=false --latest \
-            --title "沙发电视 $VERSION" --notes-file "$RUNNER_TEMP/release-notes.md"
+            --title "SofaTV $VERSION" --notes-file "$RUNNER_TEMP/release-notes.md"
 
   bump-version:
     needs: publish

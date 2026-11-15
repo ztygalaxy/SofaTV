@@ -35,11 +35,7 @@ struct VideoStage: NSViewRepresentable {
         init(library: Library) {
             stage = Stage(library: library)
             super.init(content: stage)
-            placeholder.rootView = AnyView(VStack(spacing: 12) {
-                Image(systemName: "pin.fill").font(.system(size: 24)).foregroundStyle(.secondary)
-                Text("正在置顶小窗播放").foregroundStyle(.secondary)
-                Button("返回主窗口") { [weak self] in self?.restoreEmbedded() }
-            })
+            placeholder.rootView = AnyView(MiniPlayerPlaceholder(restore: { [weak self] in self?.restoreEmbedded() }))
             placeholder.autoresizingMask = [.width, .height]
             placeholder.frame = bounds
             placeholder.isHidden = true
@@ -63,6 +59,17 @@ struct VideoStage: NSViewRepresentable {
             }
         }
         required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    }
+    private struct MiniPlayerPlaceholder: View {
+        let restore: () -> Void
+
+        var body: some View {
+            VStack(spacing: 12) {
+                Image(systemName: "pin.fill").font(.system(size: 24)).foregroundStyle(.secondary)
+                Text(L10n.text("正在置顶小窗播放")).foregroundStyle(.secondary)
+                Button(L10n.text("返回主窗口"), action: restore)
+            }
+        }
     }
     final class PointerSurface: NSView {
         var onDoubleClick: (() -> Void)?
@@ -175,7 +182,6 @@ struct VideoStage: NSViewRepresentable {
 
         init() {
             super.init(frame: .zero)
-            appearance = NSAppearance(named: .darkAqua)
             material = .underWindowBackground
             blendingMode = .withinWindow
             state = .active
@@ -186,7 +192,7 @@ struct VideoStage: NSViewRepresentable {
 
         func setContent(_ view: AnyView) {
             guard contentHost == nil else { return }
-            let host = NSHostingView<AnyView>(rootView: AnyView(view.preferredColorScheme(.dark)))
+            let host = NSHostingView<AnyView>(rootView: AnyView(view.appLocale()))
             host.translatesAutoresizingMaskIntoConstraints = false
             addSubview(host)
             NSLayoutConstraint.activate([
@@ -278,7 +284,7 @@ struct VideoStage: NSViewRepresentable {
         }
         let cover = NSView()
         let spinner = NSProgressIndicator()
-        let label = NSTextField(labelWithString: "正在加载…")
+        let label = NSTextField(labelWithString: L10n.text("正在加载…"))
         weak var library: Library?
         var observation: NSKeyValueObservation?
         private var libraryUpdates: AnyCancellable?
@@ -307,7 +313,6 @@ struct VideoStage: NSViewRepresentable {
             miniPlayerButton.target = self; miniPlayerButton.action = #selector(toggleMiniPlayer)
             miniPlayerButton.isHidden = true; topBackdrop.addSubview(miniPlayerButton)
             powerButton.target = self; powerButton.action = #selector(stopPlayback)
-            powerButton.toolTip = "停止播放"; powerButton.setAccessibilityLabel("停止播放")
             powerButton.setSymbol("power")
             powerButton.isHidden = true; topBackdrop.addSubview(powerButton)
             previousChannelButton.target = self; previousChannelButton.action = #selector(playPreviousChannel)
@@ -316,7 +321,6 @@ struct VideoStage: NSViewRepresentable {
                 previousChannelButton.setImage(image)
             } else { previousChannelButton.setSymbol("arrow.uturn.backward") }
             previousChannelButton.isHidden = true; volumeBackdrop.addSubview(previousChannelButton)
-            configureMiniPlayerButton()
             pointer.onPointerActivity = { [weak self] in self?.showOverlayControls() }
             pointer.onPointerMoved = { [weak self] event in self?.updateFullscreenDrawer(for: event) }
             pointer.onScroll = { [weak self] event in self?.adjustVolume(with: event) }
@@ -390,7 +394,8 @@ struct VideoStage: NSViewRepresentable {
                     self?.library?.videoAppeared(view.player?.currentItem)
                 }
             }
-            update(library)
+            refreshLanguage()
+            NotificationCenter.default.addObserver(self, selector: #selector(refreshLanguage), name: L10n.didChange, object: L10n.shared)
             // A detached stage stays live even while the main SwiftUI window is hidden.
             libraryUpdates = library.objectWillChange.receive(on: DispatchQueue.main).sink { [weak self, weak library] in
                 guard let self, let library else { return }
@@ -398,8 +403,21 @@ struct VideoStage: NSViewRepresentable {
             }
         }
         required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+        @objc private func refreshLanguage() {
+            let stop = L10n.text("停止播放")
+            powerButton.toolTip = stop
+            powerButton.setAccessibilityLabel(stop)
+            configureMiniPlayerButton()
+            sidebarButton.refreshLanguage()
+            volumeControl.refreshLanguage()
+            if let library {
+                volumeControl.setVolume(library.volume, muted: library.isMuted)
+                update(library)
+            }
+        }
+
         private func configureMiniPlayerButton() {
-            let title = isMiniPlayer ? "返回主窗口" : "置顶迷你窗口"
+            let title = isMiniPlayer ? L10n.text("返回主窗口") : L10n.text("置顶迷你窗口")
             miniPlayerButton.toolTip = title
             miniPlayerButton.setAccessibilityLabel(title)
             miniPlayerButton.setSymbol(isMiniPlayer ? "pin.slash.fill" : "pin.fill", rotation: -45)
@@ -424,7 +442,13 @@ struct VideoStage: NSViewRepresentable {
             guard !fullscreenPickerConfigured else { return }
             fullscreenPickerConfigured = true
             guidePreview = preview
-            fullscreenDrawer.setContent(AnyView(FullscreenChannelPicker(library: library, ui: ui, programGuide: programGuide, guidePreview: preview)))
+            fullscreenDrawer.setContent(AnyView(
+                FullscreenChannelPicker(library: library, ui: ui, programGuide: programGuide, guidePreview: preview) { [weak self] width in
+                    guard let self, minimumFullscreenDrawerWidth != width else { return }
+                    minimumFullscreenDrawerWidth = width
+                    needsLayout = true
+                }
+            ))
             let guide = ProgramGuideOverlayHost(preview: preview, store: programGuide, presentation: .fullscreen,
                                                 playingChannel: library.catalogSelectedChannel)
             guideHost = guide
@@ -481,8 +505,9 @@ struct VideoStage: NSViewRepresentable {
             guard let window else { return false }
             return bounds.contains(convert(pointerLocation(window), from: nil))
         }
+        private var minimumFullscreenDrawerWidth: CGFloat = 0
         private func fullscreenDrawerFrame(visible: Bool) -> NSRect {
-            let width = min(max(320, bounds.width / 3), 460)
+            let width = max(minimumFullscreenDrawerWidth, min(max(320, bounds.width / 3), 460))
             return NSRect(x: visible ? 0 : -width - 12, y: 0, width: width, height: bounds.height)
         }
         private func layoutFullscreenDrawer() {
@@ -678,7 +703,7 @@ struct VideoStage: NSViewRepresentable {
             cover.layer?.backgroundColor = color
         }
         func update(_ library: Library) {
-            let previousTitle = library.previousChannel.map { "返回上一观看频道 · \($0.displayName)" } ?? "返回上一观看频道"
+            let previousTitle = library.previousChannel.map { L10n.text("返回上一观看频道 · \($0.displayName)") } ?? L10n.text("返回上一观看频道")
             previousChannelButton.toolTip = previousTitle
             previousChannelButton.setAccessibilityLabel(previousTitle)
             previousChannelButton.isEnabled = library.previousChannel != nil
@@ -745,7 +770,9 @@ private struct FullscreenChannelPicker: View {
     @ObservedObject var ui: UIState
     @ObservedObject var programGuide: ProgramGuideStore
     let guidePreview: ProgramGuidePreview
+    let onMinimumWidthChange: (CGFloat) -> Void
     private let contentScale: CGFloat = 1.3
+    private var headerInset: CGFloat { 14 * contentScale }
 
     private struct Section: Identifiable {
         let name: String
@@ -768,7 +795,7 @@ private struct FullscreenChannelPicker: View {
             HStack(spacing: 7 * contentScale) {
                 Image(systemName: ui.collapsedGroups.contains(group) ? "chevron.right" : "chevron.down")
                     .font(.system(size: 10 * contentScale, weight: .semibold)).frame(width: 12 * contentScale)
-                Text(group).font(.system(size: 13 * contentScale, weight: .semibold))
+                Text(Channel.groupTitle(group)).font(.system(size: 13 * contentScale, weight: .semibold))
                 Spacer(minLength: 0)
             }
             .foregroundStyle(.secondary)
@@ -777,8 +804,8 @@ private struct FullscreenChannelPicker: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(group)
-        .accessibilityValue(ui.collapsedGroups.contains(group) ? "已折叠" : "已展开")
+        .accessibilityLabel(Channel.groupTitle(group))
+        .accessibilityValue(ui.collapsedGroups.contains(group) ? L10n.text("已折叠") : L10n.text("已展开"))
         .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
@@ -794,12 +821,10 @@ private struct FullscreenChannelPicker: View {
             ChannelListGroup(name: $0.name, visibleChannelCount: ui.collapsedGroups.contains($0.name) ? 0 : $0.channels.count)
         }
         VStack(spacing: 0) {
-            HStack(spacing: 10 * contentScale) {
-                ChannelFilterTabs(favoritesOnly: $ui.favoritesOnly, contentScale: contentScale)
-                    .frame(width: 72 * contentScale, height: 26 * contentScale)
-                ChannelSearchField(text: $ui.search, scale: contentScale)
+            ChannelBrowserHeader(favoritesOnly: $ui.favoritesOnly, search: $ui.search, scale: contentScale) { width in
+                onMinimumWidthChange(width + 2 * headerInset)
             }
-            .padding(.horizontal, 14 * contentScale).padding(.top, 18 * contentScale).padding(.bottom, 10 * contentScale)
+            .padding(.horizontal, headerInset).padding(.top, 18 * contentScale).padding(.bottom, 10 * contentScale)
 
             List {
                 ForEach(snapshot.values) { section in
@@ -850,12 +875,12 @@ private struct FullscreenChannelPicker: View {
             }
             .overlay {
                 if library.channels.isEmpty {
-                    SidebarEmptyView("暂无频道", systemImage: "tv")
+                    SidebarEmptyView(L10n.text("暂无频道"), systemImage: "tv")
                 } else if snapshot.channels == 0 && programs.isEmpty {
                     if ui.favoritesOnly {
-                        SidebarEmptyView(query.isEmpty ? "暂无收藏频道" : "收藏中没有匹配的频道或节目", systemImage: "star")
+                        SidebarEmptyView(query.isEmpty ? L10n.text("暂无收藏频道") : L10n.text("收藏中没有匹配的频道或节目"), systemImage: "star")
                     } else {
-                        SidebarEmptyView("没有匹配的频道或节目", systemImage: "magnifyingglass")
+                        SidebarEmptyView(L10n.text("没有匹配的频道或节目"), systemImage: "magnifyingglass")
                     }
                 }
             }
@@ -867,7 +892,7 @@ private struct FullscreenChannelPicker: View {
             HStack(spacing: 8 * contentScale) {
                 AppLogoView(size: 16 * contentScale)
                 Spacer(minLength: 6)
-                Text(query.isEmpty ? "\(snapshot.channels) 个频道" : "\(snapshot.channels) 个频道 · \(programs.count) 档节目")
+                Text(query.isEmpty ? L10n.text("\(snapshot.channels) 个频道") : L10n.text("\(snapshot.channels) 个频道 · \(programs.count) 档节目"))
                     .fixedSize()
             }
             .font(.system(size: 11 * contentScale)).foregroundStyle(.secondary)
@@ -875,4 +900,5 @@ private struct FullscreenChannelPicker: View {
         }
         .background(Color.clear)
     }
+
 }

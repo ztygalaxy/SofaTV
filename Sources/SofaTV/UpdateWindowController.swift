@@ -55,28 +55,31 @@ final class UpdateWindowController: NSWindowController, NSWindowDelegate {
 
     private let update: VerifiedUpdate
     private let defaults: UserDefaults
-    private let skipButton = NSButton(title: "跳过此版本", target: nil, action: nil)
-    private let laterButton = NSButton(title: "稍后", target: nil, action: nil)
-    private let installButton = NSButton(title: "下载并安装", target: nil, action: nil)
+    private let skipButton = NSButton(title: "", target: nil, action: nil)
+    private let laterButton = NSButton(title: "", target: nil, action: nil)
+    private let installButton = NSButton(title: "", target: nil, action: nil)
     private let progress = NSProgressIndicator()
     private let status = NSTextField(labelWithString: "")
     private let progressStack = NSStackView()
     private var downloadTask: Task<Void, Never>?
     private var installing = false
+    private var localizeHeading: (() -> Void)?
+    private var progressMessage: String.LocalizationValue? {
+        didSet { refreshProgressMessage() }
+    }
 
     init(update: VerifiedUpdate, current: SemanticVersion, defaults: UserDefaults = .standard) {
         self.update = update
         self.defaults = defaults
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 300),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        window.title = "软件更新"
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.isReleasedWhenClosed = false
-        window.appearance = NSAppearance(named: .darkAqua)
         super.init(window: window)
         window.delegate = self
         buildContent(current: current)
+        NotificationCenter.default.addObserver(self, selector: #selector(refreshLanguage), name: L10n.didChange, object: L10n.shared)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -101,9 +104,9 @@ final class UpdateWindowController: NSWindowController, NSWindowDelegate {
         icon.heightAnchor.constraint(equalToConstant: 64).isActive = true
         stack.addArrangedSubview(icon)
 
-        let title = NSTextField(labelWithString: "发现沙发电视新版本")
+        let title = NSTextField(labelWithString: "")
         title.font = .boldSystemFont(ofSize: 17)
-        let detail = NSTextField(wrappingLabelWithString: "沙发电视 \(update.version) 已发布，你正在使用 \(current)。")
+        let detail = NSTextField(wrappingLabelWithString: "")
         detail.font = .systemFont(ofSize: 13)
         let heading = NSStackView(views: [title, detail])
         heading.orientation = .vertical
@@ -112,8 +115,8 @@ final class UpdateWindowController: NSWindowController, NSWindowDelegate {
         heading.widthAnchor.constraint(equalToConstant: width).isActive = true
         stack.addArrangedSubview(heading)
 
-        if !update.notes.isEmpty {
-            let label = NSTextField(labelWithString: "更新说明")
+        let notesLabel = update.notes.isEmpty ? nil : NSTextField(labelWithString: "")
+        if let label = notesLabel {
             label.font = .boldSystemFont(ofSize: 13)
             let notes = NSStackView(views: [label, UpdateNotesView(notes: update.notes, width: width)])
             notes.orientation = .vertical
@@ -155,9 +158,28 @@ final class UpdateWindowController: NSWindowController, NSWindowDelegate {
         buttons.alignment = .centerY
         buttons.widthAnchor.constraint(equalToConstant: width).isActive = true
         stack.addArrangedSubview(buttons)
-        content.layoutSubtreeIfNeeded()
-        fitWindow()
+        let version = update.version.description
+        localizeHeading = {
+            title.stringValue = L10n.text("发现沙发电视新版本")
+            detail.stringValue = L10n.text("沙发电视 \(version) 已发布，你正在使用 \(current.description)。")
+            notesLabel?.stringValue = L10n.text("更新说明")
+        }
+        refreshLanguage()
         window.center()
+    }
+
+    @objc private func refreshLanguage() {
+        window?.title = L10n.text("软件更新")
+        localizeHeading?()
+        skipButton.title = L10n.text("跳过此版本")
+        laterButton.title = progressStack.isHidden ? L10n.text("稍后") : L10n.text("取消下载")
+        installButton.title = L10n.text("下载并安装")
+        refreshProgressMessage()
+        fitWindow()
+    }
+
+    private func refreshProgressMessage() {
+        status.stringValue = progressMessage.map { L10n.text($0) } ?? ""
     }
 
     private func fitWindow() {
@@ -180,9 +202,9 @@ final class UpdateWindowController: NSWindowController, NSWindowDelegate {
         guard downloadTask == nil else { return }
         skipButton.isEnabled = false
         installButton.isEnabled = false
-        laterButton.title = "取消下载"
+        laterButton.title = L10n.text("取消下载")
         progressStack.isHidden = false
-        status.stringValue = "正在下载更新…"
+        progressMessage = "正在下载更新…"
         progress.isIndeterminate = true
         progress.startAnimation(nil)
         fitWindow()
@@ -199,31 +221,32 @@ final class UpdateWindowController: NSWindowController, NSWindowDelegate {
                 if let fraction {
                     progress.stopAnimation(nil)
                     progress.doubleValue = fraction
-                    status.stringValue = fraction < 1 ? "正在下载更新… \(Int(fraction * 100))%" : "正在校验更新包…"
+                    progressMessage = fraction < 1 ? "正在下载更新… \(Int(fraction * 100))%" : "正在校验更新包…"
                 }
             }
             try Task.checkCancellation()
             installing = true
             laterButton.isEnabled = false
             window?.standardWindowButton(.closeButton)?.isEnabled = false
-            status.stringValue = "正在准备安装，随后将重新打开沙发电视…"
+            progressMessage = "正在准备安装，随后将重新打开沙发电视…"
             try await UpdateInstaller.launch(source: source, version: update.version.description, workspace: workspace)
         } catch {
             try? FileManager.default.removeItem(at: workspace)
             if !Task.isCancelled {
-                status.stringValue = error.localizedDescription
+                let message = UpdateInstaller.message(for: error)
+                progressMessage = nil
                 progressStack.isHidden = true
                 let alert = NSAlert()
-                alert.messageText = "下载或安装更新失败"
-                alert.informativeText = error.localizedDescription
-                alert.addButton(withTitle: "好")
+                alert.messageText = L10n.text("下载或安装更新失败")
+                alert.informativeText = message
+                alert.addButton(withTitle: L10n.text("好"))
                 AppWindows.shared.present(alert)
             }
             downloadTask = nil
             installing = false
             skipButton.isEnabled = true
             laterButton.isEnabled = true
-            laterButton.title = "稍后"
+            laterButton.title = L10n.text("稍后")
             installButton.isEnabled = true
             window?.standardWindowButton(.closeButton)?.isEnabled = true
             fitWindow()

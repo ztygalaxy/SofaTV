@@ -55,8 +55,12 @@ struct SidebarResizeHandle: View {
             wantsLayer = true
             layer?.backgroundColor = NSColor.clear.cgColor
             setAccessibilityElement(true); setAccessibilityRole(.splitter)
-            setAccessibilityLabel("调整频道列表宽度")
-            toolTip = "左右拖动调整频道列表宽度"
+            refreshLanguage()
+            NotificationCenter.default.addObserver(self, selector: #selector(refreshLanguage), name: L10n.didChange, object: L10n.shared)
+        }
+        @objc private func refreshLanguage() {
+            setAccessibilityLabel(L10n.text("调整频道列表宽度"))
+            toolTip = L10n.text("左右拖动调整频道列表宽度")
         }
         required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
         override var isOpaque: Bool { false }
@@ -97,7 +101,9 @@ struct SidebarResizeHandle: View {
         func cancelDrag() {
             guard dragStart != nil else { return }
             dragStart = nil; needsDisplay = true
-            NotificationCenter.default.removeObserver(self)
+            for name in [NSWindow.willCloseNotification, NSWindow.willMiniaturizeNotification, NSApplication.didResignActiveNotification] {
+                NotificationCenter.default.removeObserver(self, name: name, object: nil)
+            }
             NSCursor.pop()
             dragWindow?.enableCursorRects()
             if let view = dragWindow?.contentView { dragWindow?.invalidateCursorRects(for: view) }
@@ -123,7 +129,7 @@ struct SidebarResizeHandle: View {
         }
         private static let normalLineWidth: CGFloat = 1
         override func accessibilityValue() -> Any? { NSNumber(value: Double(visibleWidth)) }
-        override func accessibilityValueDescription() -> String? { "\(Int(visibleWidth)) 点" }
+        override func accessibilityValueDescription() -> String? { L10n.text("\(Int(visibleWidth)) 点") }
         override func accessibilityMinValue() -> Any? { NSNumber(value: Double(minimumWidth)) }
         override func accessibilityMaxValue() -> Any? { NSNumber(value: Double(maximumWidth)) }
         override func accessibilityPerformIncrement() -> Bool { change(visibleWidth + 20); onCommit?(); return true }

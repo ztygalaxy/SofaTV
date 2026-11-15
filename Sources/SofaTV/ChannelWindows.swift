@@ -6,8 +6,8 @@ extension Library {
     func importChannels() {
         if let importPanel { importPanel.makeKeyAndOrderFront(nil); return }
         let panel = NSOpenPanel()
-        panel.title = "导入频道文件"
-        panel.prompt = "导入"
+        panel.title = L10n.text("导入频道文件")
+        panel.prompt = L10n.text("导入")
         panel.allowedContentTypes = [.item]
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
@@ -25,7 +25,7 @@ extension Library {
 
     func showAddressWindow(direct: Bool) {
         let id = "address-\(ObjectIdentifier(self))-\(direct)"
-        let title = direct ? "打开直播地址" : "导入在线频道列表"
+        let title: String.LocalizationValue = direct ? "打开直播地址" : "导入在线频道列表"
         AppWindows.shared.show(id: id, title: title, size: NSSize(width: 420, height: 124), titleVisible: true, content:
             ChannelAddressView(label: direct ? "直播地址" : "频道列表地址",
                 initialAddress: direct ? "" : OnlineChannelSource.defaultURL.absoluteString,
@@ -53,15 +53,15 @@ extension Library {
     }
 
     func showError(_ message: String) {
-        AppWindows.shared.showMessage("无法打开", detail: message)
+        AppWindows.shared.showMessage(L10n.text("无法打开"), detail: message)
     }
 
     func confirmDeletion(_ deletion: LibraryDeletion, in list: ChannelList? = nil) {
         let alert = NSAlert()
         alert.messageText = deletion.title
         alert.informativeText = deletion.message(in: list)
-        alert.addButton(withTitle: "删除").hasDestructiveAction = true
-        alert.addButton(withTitle: "取消").keyEquivalent = "\u{1b}"
+        alert.addButton(withTitle: L10n.text("删除")).hasDestructiveAction = true
+        alert.addButton(withTitle: L10n.text("取消")).keyEquivalent = "\u{1b}"
         AppWindows.shared.present(alert) { [weak self] response in
             guard response == .alertFirstButtonReturn, let self else { return }
             switch deletion {
@@ -75,18 +75,19 @@ extension Library {
 }
 
 private struct ChannelAddressView: View {
-    let label: String
+    let label: String.LocalizationValue
     let onOpen: (String) -> Void
     let onClose: () -> Void
     @ViewState private var address: String
     @FocusState private var addressFocused: Bool
 
-    init(label: String, initialAddress: String = "", onOpen: @escaping (String) -> Void, onClose: @escaping () -> Void) {
+    init(label: String.LocalizationValue, initialAddress: String = "", onOpen: @escaping (String) -> Void, onClose: @escaping () -> Void) {
         self.label = label; self.onOpen = onOpen; self.onClose = onClose
         _address = ViewState(initialValue: initialAddress)
     }
 
     var body: some View {
+        let label = L10n.text(label)
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(label).font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
@@ -99,10 +100,10 @@ private struct ChannelAddressView: View {
             }
             HStack(spacing: 8) {
                 Spacer()
-                Button(action: onClose) { Text("取消").frame(minWidth: 44) }
+                Button(action: onClose) { Text(L10n.text("取消")).frame(minWidth: 44) }
                     .keyboardShortcut(.cancelAction)
                 Button { onOpen(address.trimmingCharacters(in: .whitespacesAndNewlines)) } label: {
-                    Text("打开").frame(minWidth: 44)
+                    Text(L10n.text("打开")).frame(minWidth: 44)
                 }
                 .keyboardShortcut(.defaultAction)
             }

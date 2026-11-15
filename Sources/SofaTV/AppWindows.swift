@@ -1,6 +1,16 @@
 import AppKit
 import SwiftUI
 
+extension View {
+    func appLocale() -> some View { modifier(AppLocaleModifier()) }
+}
+
+private struct AppLocaleModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        content.environment(\.locale, L10n.locale)
+    }
+}
+
 /// A short confirmation attached to the active app window, without taking focus
 /// or intercepting clicks on the video and its controls.
 @MainActor final class AppToast {
@@ -24,7 +34,6 @@ import SwiftUI
             .padding(.horizontal, 16).padding(.vertical, 12)
             .frame(width: width)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
-            .preferredColorScheme(.dark)
         )
         let toast = NSPanel(contentRect: NSRect(origin: .zero, size: host.fittingSize),
                             styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -102,21 +111,21 @@ struct AppToastVideoRegion: NSViewRepresentable {
         AppToast.shared.reposition()
     }
 
-    func show<Content: View>(id: String, title: String, size: NSSize, titleVisible: Bool = false, content: Content) {
+    func show<Content: View>(id: String, title: String.LocalizationValue, size: NSSize, titleVisible: Bool = false, content: Content) {
         if let controller = windows[id] {
             controller.attach(above: playbackView?.window, fullscreen: playbackIsFullscreen); controller.showWindow(nil); return
         }
         let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        window.title = title
         window.titleVisibility = titleVisible ? .visible : .hidden
         window.titlebarAppearsTransparent = true
         let host = NSHostingView(rootView: content
-            .environment(\.locale, Locale(identifier: "zh_Hans_CN"))
-            .preferredColorScheme(.dark)
+            .appLocale()
             .frame(maxWidth: .infinity, maxHeight: .infinity))
         host.frame = NSRect(origin: .zero, size: size)
         window.contentView = host
-        present(AppWindowController(window: window), id: id)
+        let controller = AppWindowController(window: window)
+        controller.localizeTitle(title)
+        present(controller, id: id)
     }
 
     func close(id: String) { windows[id]?.close() }
@@ -130,7 +139,7 @@ struct AppToastVideoRegion: NSViewRepresentable {
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = detail
-        alert.addButton(withTitle: "好")
+        alert.addButton(withTitle: L10n.text("好"))
         present(alert)
     }
 
@@ -149,6 +158,7 @@ struct AppToastVideoRegion: NSViewRepresentable {
     var onClose: (() -> Void)?
     private var alert: NSAlert?
     private var onResponse: ((NSApplication.ModalResponse) -> Void)?
+    private var titleKey: String.LocalizationValue?
 
     override init(window: NSWindow?) {
         super.init(window: window)
@@ -169,6 +179,16 @@ struct AppToastVideoRegion: NSViewRepresentable {
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func localizeTitle(_ title: String.LocalizationValue) {
+        titleKey = title
+        refreshTitle()
+        NotificationCenter.default.addObserver(self, selector: #selector(refreshTitle), name: L10n.didChange, object: L10n.shared)
+    }
+
+    @objc private func refreshTitle() {
+        if let titleKey { window?.title = L10n.text(titleKey) }
+    }
 
     func attach(above playbackWindow: NSWindow?, fullscreen: Bool = false) {
         guard let window else { return }

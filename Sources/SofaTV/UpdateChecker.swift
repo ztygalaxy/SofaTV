@@ -70,10 +70,10 @@ final class UpdateChecker: NSObject {
             guard let current = currentVersion else { throw UpdateManifestError.invalid }
             guard finishTask(id: id) else { return }
             if let update, update.version > current { showUpdate(update, current: current) }
-            else { showMessage("已是最新版", detail: "当前版本：\(current)") }
+            else { showMessage(L10n.text("已是最新版"), detail: L10n.text("当前版本：\(current.description)")) }
         } catch {
             guard finishTask(id: id), !(error is CancellationError), (error as? URLError)?.code != .cancelled else { return }
-            showMessage("检查更新失败", detail: userMessage(for: error))
+            showMessage(L10n.text("检查更新失败"), detail: userMessage(for: error))
         }
     }
 
@@ -103,13 +103,13 @@ final class UpdateChecker: NSObject {
     private func showProgress() {
         let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 380, height: 120), styleMask: [.titled], backing: .buffered, defer: false)
         panel.isReleasedWhenClosed = false
-        panel.title = "正在检查更新…"
+        panel.title = L10n.text("正在检查更新…")
         let progress = NSProgressIndicator(frame: NSRect(x: 20, y: 65, width: 340, height: 20))
         progress.style = .bar
         progress.isIndeterminate = true
         progress.startAnimation(nil)
         panel.contentView?.addSubview(progress)
-        let cancel = NSButton(title: "取消", target: self, action: #selector(cancel))
+        let cancel = NSButton(title: L10n.text("取消"), target: self, action: #selector(cancel))
         cancel.frame = NSRect(x: 260, y: 15, width: 100, height: 32)
         panel.contentView?.addSubview(cancel)
         panel.center()
@@ -135,12 +135,12 @@ final class UpdateChecker: NSObject {
         alert.icon = NSApp.applicationIconImage
         alert.messageText = title
         alert.informativeText = detail
-        alert.addButton(withTitle: "好")
+        alert.addButton(withTitle: L10n.text("好"))
         AppWindows.shared.present(alert)
     }
 
     private func userMessage(for error: Error) -> String {
         if let error = error as? UpdateManifestError { return error.localizedDescription }
-        return "暂时无法连接更新服务，请检查网络后重试。"
+        return L10n.text("暂时无法连接更新服务，请检查网络后重试。")
     }
 }

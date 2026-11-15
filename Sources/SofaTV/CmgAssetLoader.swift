@@ -71,7 +71,7 @@ final class CmgAssetLoader: @unchecked Sendable {
                     case .ready:
                         guard let port = listener?.port else { return }
                         self.baseURL = URL(string: "http://127.0.0.1:\(port.rawValue)")!
-                        self.onDiagnostic?("本机直播通道已就绪")
+                        self.onDiagnostic?(L10n.text("本机直播通道已就绪"))
                         completion(.success(self.register(url)))
                     case .failed(let error): completion(.failure(error))
                     default: break
@@ -119,7 +119,7 @@ final class CmgAssetLoader: @unchecked Sendable {
                     guard !self.cancelled else { connection.cancel(); return }
                     do {
                         if let error { throw error }
-                        guard let data, data.count <= 32 * 1024 * 1024, let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw CmgError.message("视频分段下载失败") }
+                        guard let data, data.count <= 32 * 1024 * 1024, let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw CmgError.message(L10n.text("视频分段下载失败")) }
                         let result: Data; let type: String
                         if String(data: data.prefix(16), encoding: .utf8)?.hasPrefix("#EXTM3U") == true {
                             if state == nil {
@@ -135,29 +135,29 @@ final class CmgAssetLoader: @unchecked Sendable {
                                     let crypto = try CmgRuntime()
                                     try crypto.configure(tag: state.tag, location: state.location, timestamp: state.timestamp, nativeTrace: state.nativeTrace, updates: state.updates, base: state.base)
                                     runtime = crypto
-                                    onDiagnostic?("央视频解密会话已配置，启用分段和关键帧边界刷新")
+                                    onDiagnostic?(L10n.text("CCTV 解密会话已配置，启用分段和关键帧边界刷新"))
                                 }
-                                guard let runtime else { throw CmgError.message("解密库未初始化") }
+                                guard let runtime else { throw CmgError.message(L10n.text("解密库未初始化")) }
                                 result = try runtime.transformSegment(data)
                             } else {
                                 if h5eRuntime == nil {
                                     h5eRuntime = try H5eRuntime()
-                                    onDiagnostic?("央视 H5E 原生解密已就绪")
+                                    onDiagnostic?(L10n.text("CCTV H5E 原生解密已就绪"))
                                 }
-                                guard let h5eRuntime else { throw H5eError.message("央视解密库未初始化") }
+                                guard let h5eRuntime else { throw H5eError.message(L10n.text("CCTV 解密库未初始化")) }
                                 result = try h5eRuntime.transformSegment(data)
                             }
                             let decryptMs = Int((ProcessInfo.processInfo.systemUptime - decryptStarted) * 1000)
                             type = "video/mp2t"
                             segmentCount += 1
                             let downloadMs = Int((downloaded - started) * 1000)
-                            let detail = runtime.map { " / \($0.lastVCLCount) 帧 / 边界刷新 \($0.lastBoundaryRestarts)" } ?? " / 央视 H5E"
-                            onDiagnostic?("分段 \(segmentCount)：下载 \(downloadMs) 毫秒 / 解密 \(decryptMs) 毫秒" + detail)
+                            let detail = runtime.map { L10n.text(" / \($0.lastVCLCount) 帧 / 边界刷新 \($0.lastBoundaryRestarts)") } ?? L10n.text(" / CCTV H5E")
+                            onDiagnostic?(L10n.text("分段 \(segmentCount)：下载 \(downloadMs) 毫秒 / 解密 \(decryptMs) 毫秒") + detail)
                             cache.insert(result, for: remote)
-                        } else { throw CmgError.message("当前视频分段格式暂不支持") }
+                        } else { throw CmgError.message(L10n.text("当前视频分段格式暂不支持")) }
                         replyAll(remote, data: result, type: type)
                     } catch {
-                        onDiagnostic?("原生分段处理失败：" + error.localizedDescription)
+                        onDiagnostic?(L10n.text("原生分段处理失败：") + error.localizedDescription)
                         replyAll(remote, status: "502 Bad Gateway", data: Data(error.localizedDescription.utf8), type: "text/plain")
                     }
                 }
@@ -177,8 +177,8 @@ final class CmgAssetLoader: @unchecked Sendable {
             replyAll(master, status: "503 Service Unavailable", data: Data(), type: "text/plain")
             return
         }
-        let resolution = probe.actual?.description ?? probe.variant.advertised?.description ?? "未知"
-        onDiagnostic?("央视清晰度已选择：\(resolution)")
+        let resolution = probe.actual?.description ?? probe.variant.advertised?.description ?? L10n.text("未知")
+        onDiagnostic?(L10n.text("CCTV 清晰度已选择：\(resolution)"))
         let playlist = "#EXTM3U\n" + probe.variant.info + "\n" + register(probe.variant.url).absoluteString + "\n"
         replyAll(master, data: Data(playlist.utf8), type: "application/vnd.apple.mpegurl")
     }
@@ -212,7 +212,7 @@ final class CmgAssetLoader: @unchecked Sendable {
                         let probe = HlsVariantProbe(variant: variant, actual: actual)
                         if probe.matchesAdvertised { finishH5eSelection(probe, master: master); return }
                         if let expected = variant.advertised, let actual {
-                            onDiagnostic?("线路标注 \(expected.description)，实际 \(actual.description)，检查其他清晰度")
+                            onDiagnostic?(L10n.text("线路标注 \(expected.description)，实际 \(actual.description)，检查其他清晰度"))
                         }
                         probeH5eVariants(Array(remaining.dropFirst()), available: available + [probe], fallback: fallback, master: master, deadline: deadline)
                     }
@@ -234,7 +234,7 @@ final class CmgAssetLoader: @unchecked Sendable {
         return parts.url!
     }
     static func rewrite(_ data: Data, base: URL, wrap: (URL) -> URL = wrapped) throws -> Data {
-        guard let text = String(data: data, encoding: .utf8) else { throw CmgError.message("无效的直播列表编码") }
+        guard let text = String(data: data, encoding: .utf8) else { throw CmgError.message(L10n.text("无效的直播列表编码")) }
         let expression = try NSRegularExpression(pattern: "URI=\"([^\"]+)\"")
         let lines = text.components(separatedBy: .newlines).map { line -> String in
             if line.hasPrefix("#") {

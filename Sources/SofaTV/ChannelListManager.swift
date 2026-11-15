@@ -28,13 +28,13 @@ struct ChannelListManager: View {
                     Image(systemName: icon(for: list.kind))
                         .font(.title3).foregroundStyle(.secondary).frame(width: 24)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(list.name).font(.system(size: 13, weight: .semibold)).lineLimit(1)
-                        Text(list.detail).font(.caption).foregroundStyle(.secondary)
-                            .lineLimit(1).truncationMode(.middle).help(list.detail)
+                        Text(list.displayName).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                        Text(list.displayDetail).font(.caption).foregroundStyle(.secondary)
+                            .lineLimit(1).truncationMode(.middle).help(list.displayDetail)
                         if list.remoteURL != nil { ChannelSourceStatus(library: library, list: list) }
                     }
                     Spacer(minLength: 12)
-                    Text("\(list.channels.count) 个频道").font(.system(size: 12)).foregroundStyle(.secondary)
+                    Text(L10n.text("\(list.channels.count) 个频道")).font(.system(size: 12)).foregroundStyle(.secondary)
                     Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.tertiary)
                 }
                 .padding(.leading, 12)
@@ -42,18 +42,18 @@ struct ChannelListManager: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help("查看“\(list.name)”中的频道")
+            .help(L10n.text("查看“\(list.displayName)”中的频道"))
             if list.remoteURL != nil {
                 Button { library.refreshOnlineChannels(listID: list.id) } label: {
                     Image(systemName: "arrow.clockwise").frame(width: 24, height: 32)
                 }
-                .buttonStyle(.borderless).help("更新这份频道来源")
+                .buttonStyle(.borderless).help(L10n.text("更新这份频道来源"))
                 .disabled(!library.updatingSourceIDs.isEmpty)
             }
             Button(role: .destructive) { library.confirmDeletion(.list(list)) } label: {
                 Image(systemName: "trash").frame(width: 28, height: 32)
             }
-            .buttonStyle(.borderless).help("删除这份频道来源")
+            .buttonStyle(.borderless).help(L10n.text("删除这份频道来源"))
             .padding(.trailing, 8)
         }
         .frame(height: Self.rowHeight)
@@ -63,12 +63,12 @@ struct ChannelListManager: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("频道来源").font(.headline)
+                Text(L10n.text("频道来源")).font(.headline)
                 Spacer()
-                Text("\(library.channelLists.count) 个来源").font(.caption).foregroundStyle(.secondary)
+                Text(L10n.text("\(library.channelLists.count) 个来源")).font(.caption).foregroundStyle(.secondary)
             }
             if library.channelLists.isEmpty {
-                Text("没有已导入的频道来源")
+                Text(L10n.text("没有已导入的频道来源"))
                     .font(.system(size: 13)).foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: Self.rowHeight)
             } else {
@@ -84,9 +84,9 @@ struct ChannelListManager: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             }
             HStack {
-                Text("点击来源查看频道").font(.caption).foregroundStyle(.secondary)
+                Text(L10n.text("点击来源查看频道")).font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Button("完成", action: onClose).keyboardShortcut(.defaultAction)
+                Button(L10n.text("完成"), action: onClose).keyboardShortcut(.defaultAction)
             }
         }
         .padding(20)
@@ -112,29 +112,29 @@ struct ChannelListDetail: View {
         VStack(alignment: .leading, spacing: 12) {
             if let list {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(list.name).font(.headline).lineLimit(1)
-                    Text(list.detail).font(.caption).foregroundStyle(.secondary)
-                        .lineLimit(1).truncationMode(.middle).help(list.detail)
+                    Text(list.displayName).font(.headline).lineLimit(1)
+                    Text(list.displayDetail).font(.caption).foregroundStyle(.secondary)
+                        .lineLimit(1).truncationMode(.middle).help(list.displayDetail)
                     if list.remoteURL != nil {
                         HStack {
                             ChannelSourceStatus(library: library, list: list)
                             Spacer()
-                            Button("更新") { library.refreshOnlineChannels(listID: list.id) }
+                            Button(L10n.text("更新")) { library.refreshOnlineChannels(listID: list.id) }
                                 .disabled(!library.updatingSourceIDs.isEmpty)
                             if list.hasRemovals {
-                                Button("恢复已移除内容") { library.refreshOnlineChannels(listID: list.id, restoreRemoved: true) }
+                                Button(L10n.text("恢复已移除内容")) { library.refreshOnlineChannels(listID: list.id, restoreRemoved: true) }
                                     .disabled(!library.updatingSourceIDs.isEmpty)
-                                    .help("重新下载此来源，恢复之前移除的频道、分组和线路")
+                                    .help(L10n.text("重新下载此来源，恢复之前移除的频道、分组和线路"))
                             }
                         }
                     }
                 }
                 HStack(spacing: 6) {
                     Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                    TextField("搜索频道或分组", text: $search).textFieldStyle(.plain)
+                    TextField(L10n.text("搜索频道或分组"), text: $search).textFieldStyle(.plain)
                     if !search.isEmpty {
                         Button { search = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
-                            .buttonStyle(.plain).help("清除搜索")
+                            .buttonStyle(.plain).help(L10n.text("清除搜索"))
                     }
                 }
                 .padding(.horizontal, 9).frame(height: 28)
@@ -155,19 +155,19 @@ struct ChannelListDetail: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .overlay {
                     if channels.isEmpty {
-                        Text(query.isEmpty ? "此来源中没有频道" : "没有匹配的频道")
+                        Text(query.isEmpty ? L10n.text("此来源中没有频道") : L10n.text("没有匹配的频道"))
                             .font(.system(size: 13)).foregroundStyle(.secondary)
                     }
                 }
                 HStack {
-                    Text("\(channels.count) / \(list.channels.count) 个频道").font(.caption).foregroundStyle(.secondary)
+                    Text(L10n.text("\(channels.count) / \(list.channels.count) 个频道")).font(.caption).foregroundStyle(.secondary)
                     Spacer()
-                    Button("完成", action: onClose).keyboardShortcut(.defaultAction)
+                    Button(L10n.text("完成"), action: onClose).keyboardShortcut(.defaultAction)
                 }
             } else {
-                Text("该频道来源已删除").foregroundStyle(.secondary)
+                Text(L10n.text("该频道来源已删除")).foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                HStack { Spacer(); Button("关闭", action: onClose).keyboardShortcut(.defaultAction) }
+                HStack { Spacer(); Button(L10n.text("关闭"), action: onClose).keyboardShortcut(.defaultAction) }
             }
         }
         .padding(20)
@@ -181,13 +181,14 @@ private struct ChannelSourceStatus: View {
     var body: some View {
         Group {
             if library.updatingSourceIDs.contains(list.id) {
-                Text("正在更新…")
+                Text(L10n.text("正在更新…"))
             } else if let error = library.sourceUpdateErrors[list.id] {
-                Text(list.lastCheckedAt == nil && list.channels.isEmpty ? "获取未成功，请重试" : "更新未成功，已保留原有频道")
+                Text(list.lastCheckedAt == nil && list.channels.isEmpty ? L10n.text("获取未成功，请重试") : L10n.text("更新未成功，已保留原有频道"))
                     .help(error)
             } else if let date = list.lastCheckedAt {
-                Text("上次检查 \(date.formatted(date: .abbreviated, time: .shortened))")
-            } else { Text("等待在线更新") }
+                let dateText = date.formatted(.dateTime.year().month(.abbreviated).day().hour().minute().locale(L10n.locale))
+                Text(L10n.text("上次检查 \(dateText)"))
+            } else { Text(L10n.text("等待在线更新")) }
         }
         .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
     }
@@ -205,7 +206,7 @@ private struct SourceChannelRow: View {
                 VStack(spacing: 10) {
                     ForEach(Array(channel.sources.enumerated()), id: \.offset) { index, source in
                         HStack(alignment: .top, spacing: 8) {
-                            Text("线路 \(index + 1)").font(.caption).foregroundStyle(.secondary).fixedSize()
+                            Text(L10n.text("线路 \(index + 1)")).font(.caption).foregroundStyle(.secondary).fixedSize()
                             Text(source.absoluteString).font(.system(size: 11, design: .monospaced))
                                 .textSelection(.enabled).lineLimit(2).help(source.absoluteString)
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -213,9 +214,9 @@ private struct SourceChannelRow: View {
                                 NSPasteboard.general.clearContents()
                                 NSPasteboard.general.setString(source.absoluteString, forType: .string)
                             } label: { Image(systemName: "doc.on.doc") }
-                            .help("复制播放地址")
+                            .help(L10n.text("复制播放地址"))
                             Button(role: .destructive) { onDeleteSource(source) } label: { Image(systemName: "trash") }
-                                .help("从此来源删除线路")
+                                .help(L10n.text("从此来源删除线路"))
                         }
                     }
                 }
@@ -229,12 +230,12 @@ private struct SourceChannelRow: View {
                         Text(channel.group).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     }
                     Spacer(minLength: 8)
-                    Text("\(channel.sources.count) 条线路").font(.caption).foregroundStyle(.secondary)
+                    Text(L10n.text("\(channel.sources.count) 条线路")).font(.caption).foregroundStyle(.secondary)
                 }
                 .frame(minHeight: 36)
             }
             Button(role: .destructive, action: onDelete) { Image(systemName: "trash").frame(width: 28, height: 32) }
-                .buttonStyle(.borderless).help("从此来源删除频道")
+                .buttonStyle(.borderless).help(L10n.text("从此来源删除频道"))
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
         .overlay(alignment: .bottom) { Divider() }

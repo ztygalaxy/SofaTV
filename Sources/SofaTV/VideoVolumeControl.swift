@@ -49,7 +49,6 @@ final class VideoVolumeControl: NSView {
         slider.onPointerActivity = { [weak self] in self?.onPointerActivity?() }
         slider.onTrackingChanged = { [weak self] tracking in self?.onTrackingChanged?(tracking) }
         slider.onScroll = { [weak self] event in self?.onScroll?(event) }
-        reload.toolTip = "重新播放"; reload.setAccessibilityLabel("重新播放")
         if let url = Bundle.main.url(forResource: "yuanxunhuan", withExtension: "svg", subdirectory: "PlaybackControls"),
            let image = NSImage(contentsOf: url) {
             reload.setImage(image)
@@ -63,6 +62,7 @@ final class VideoVolumeControl: NSView {
             button.onScroll = { [weak self] event in self?.onScroll?(event) }
         }
         setVolume(0.3); setFullscreen(false)
+        refreshLanguage()
     }
     convenience init() { self.init(frame: .zero) }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -86,15 +86,27 @@ final class VideoVolumeControl: NSView {
     func setFullscreen(_ fullscreen: Bool) {
         guard fullscreenState != fullscreen else { return }
         fullscreenState = fullscreen
-        let label = fullscreen ? "退出全屏" : "全屏播放"
-        fullscreenButton.toolTip = label; fullscreenButton.setAccessibilityLabel(label)
+        refreshFullscreenLabel()
         fullscreenButton.setSymbol(fullscreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+    }
+    func refreshLanguage() {
+        let title = L10n.text("重新播放")
+        reload.toolTip = title
+        reload.setAccessibilityLabel(title)
+        refreshFullscreenLabel()
+        slider.setAccessibilityLabel(L10n.text("视频音量"))
+        slider.setAccessibilityHelp(L10n.text("拖动或滚动调节音量"))
+    }
+    private func refreshFullscreenLabel() {
+        let title = fullscreenState == true ? L10n.text("退出全屏") : L10n.text("全屏播放")
+        fullscreenButton.toolTip = title
+        fullscreenButton.setAccessibilityLabel(title)
     }
     private func updateReadout(_ value: Float, muted: Bool) {
         let previousWidth = percentage.inkWidth
         percentage.setPercentage(Int((value * 100).rounded()))
         if percentage.inkWidth != previousWidth { needsLayout = true }
-        let label = (muted || value <= 0) ? "取消静音" : "静音"
+        let label = (muted || value <= 0) ? L10n.text("取消静音") : L10n.text("静音")
         if speaker.toolTip != label {
             speaker.toolTip = label; speaker.setAccessibilityLabel(label)
         }
@@ -348,7 +360,6 @@ final class VideoVolumeControl: NSView {
             super.init(frame: frameRect)
             focusRingType = .none
             setAccessibilityElement(true); setAccessibilityRole(.slider)
-            setAccessibilityLabel("视频音量"); setAccessibilityHelp("拖动或滚动调节音量")
         }
         convenience init() { self.init(frame: .zero) }
         required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }

@@ -24,9 +24,9 @@ final class CmgNativeLibrary: CmgNativeAPI {
     private let setTagFn: SetTag
     init(path: String? = nil) throws {
         let path = path ?? Bundle.main.bundleURL.appendingPathComponent("Contents/Frameworks/libSofaTVCmg.dylib").path
-        guard let handle = dlopen(path, RTLD_NOW | RTLD_LOCAL) else { throw CmgError.message("央视频解密库加载失败") }
+        guard let handle = dlopen(path, RTLD_NOW | RTLD_LOCAL) else { throw CmgError.message(L10n.text("CCTV 解密库加载失败")) }
         func symbol<T>(_ name: String, _: T.Type) throws -> T {
-            guard let pointer = dlsym(handle, name) else { throw CmgError.message("央视频解密库接口缺失") }
+            guard let pointer = dlsym(handle, name) else { throw CmgError.message(L10n.text("CCTV 解密库接口缺失")) }
             return unsafeBitCast(pointer, to: T.self)
         }
         do {
@@ -62,7 +62,7 @@ final class CmgRuntime {
     init(api: any CmgNativeAPI) { self.api = api }
     convenience init() throws { self.init(api: try CmgNativeLibrary()) }
     func configure(tag: String, location: String, timestamp: UInt64, nativeTrace: String, updates: String, base: UInt64) throws {
-        guard !tag.isEmpty else { throw CmgError.message("央视频会话标识为空") }
+        guard !tag.isEmpty else { throw CmgError.message(L10n.text("CCTV 会话标识为空")) }
         self.tag = tag; self.location = location
         let captured = updates.split(separator: ";").compactMap { line -> UInt32? in
             guard let value = line.split(separator: ",").last, let number = Int64(value) else { return nil }
@@ -72,12 +72,12 @@ final class CmgRuntime {
     }
     private func restart() throws {
         api.clock(UInt64(Date().timeIntervalSince1970 * 1000))
-        guard api.initialize(tag: tag, location: location) else { throw CmgError.message("央视频解密会话初始化失败") }
+        guard api.initialize(tag: tag, location: location) else { throw CmgError.message(L10n.text("CCTV 解密会话初始化失败")) }
         encrypted = false
     }
     func transformSegment(_ data: Data) throws -> Data {
         Self.executionLock.lock(); defer { Self.executionLock.unlock() }
-        guard !tag.isEmpty else { throw CmgError.message("央视频解密会话尚未配置") }
+        guard !tag.isEmpty else { throw CmgError.message(L10n.text("CCTV 解密会话尚未配置")) }
         // Upstream restarts on every TS segment and again at an SPS after 150 VCLs.
         // This also makes a retried/out-of-order HTTP read independent of prior reads.
         policy.beginSegment(); lastBoundaryRestarts = 0; lastVCLCount = 0
@@ -103,7 +103,7 @@ final class CmgRuntime {
         let count = api.decode(&bytes)
         // The upstream SPS path advances state but preserves the original SPS bytes.
         if type == 7 { bytes = input; if bytes.count > 2 { bytes[2] &= 0xfc }; return bytes }
-        guard count >= 0, count <= input.count else { throw CmgError.message("央视频视频数据解密失败") }
+        guard count >= 0, count <= input.count else { throw CmgError.message(L10n.text("CCTV 视频数据解密失败")) }
         return Array(bytes.prefix(count))
     }
 }
@@ -116,7 +116,7 @@ enum CmgError: LocalizedError {
 enum CmgTransportStream {
     static func transform(_ data: Data, nal: ([UInt8]) throws -> [UInt8]) throws -> Data {
         var bytes = Array(data)
-        guard !bytes.isEmpty, bytes.count % 188 == 0 else { throw CmgError.message("视频分段不是完整的 MPEG-TS 数据") }
+        guard !bytes.isEmpty, bytes.count % 188 == 0 else { throw CmgError.message(L10n.text("视频分段不是完整的 MPEG-TS 数据")) }
         var payloadCapacity = 0; var payload: [UInt8] = []; var videoPID: Int?
         var slots: [(packet: Int, offset: Int)] = []
         var header: [UInt8] = []
@@ -140,10 +140,10 @@ enum CmgTransportStream {
                 output += try nal(Array(payload[(start.0 + start.1)..<end]))
             }
             if starts.isEmpty { output = payload }
-            guard output.count <= payloadCapacity else { throw CmgError.message("解密后的 PES 超出原始容量") }
+            guard output.count <= payloadCapacity else { throw CmgError.message(L10n.text("解密后的 PES 超出原始容量")) }
             if header.count >= 9, header[4] != 0 || header[5] != 0 {
                 let length = output.count + header.count - 6
-                guard length <= 65535 else { throw CmgError.message("PES 长度超出协议范围") }
+                guard length <= 65535 else { throw CmgError.message(L10n.text("PES 长度超出协议范围")) }
                 header[4] = UInt8(length >> 8); header[5] = UInt8(length & 255)
             }
             let combined = header + output
@@ -164,7 +164,7 @@ enum CmgTransportStream {
                     // Preserve PCR/OPCR and discontinuity flags while growing adaptation stuffing.
                     for index in (slot.packet+4)..<end { bytes[index] = 0xff }
                     let adaptationLength = 183 - count
-                    guard adaptation.count <= adaptationLength else { throw CmgError.message("视频包适配字段容量不足") }
+                    guard adaptation.count <= adaptationLength else { throw CmgError.message(L10n.text("视频包适配字段容量不足")) }
                     bytes[slot.packet+3] = (bytes[slot.packet+3] & 0xcf) | (count == 0 ? 0x20 : 0x30)
                     bytes[slot.packet+4] = UInt8(adaptationLength)
                     if adaptationLength > 0 {
@@ -176,11 +176,11 @@ enum CmgTransportStream {
                 }
                 cursor += count
             }
-            guard cursor == combined.count else { throw CmgError.message("视频 PES 重封装不完整") }
+            guard cursor == combined.count else { throw CmgError.message(L10n.text("视频 PES 重封装不完整")) }
             payloadCapacity = 0; payload = []; slots = []; header = []; expectedPayload = nil
         }
         for packet in stride(from: 0, to: bytes.count, by: 188) {
-            guard bytes[packet] == 0x47 else { throw CmgError.message("视频分段同步标记损坏") }
+            guard bytes[packet] == 0x47 else { throw CmgError.message(L10n.text("视频分段同步标记损坏")) }
             let pid = Int(bytes[packet+1] & 31) << 8 | Int(bytes[packet+2])
             let control = (bytes[packet+3] >> 4) & 3
             guard control & 1 != 0 else { continue }
@@ -193,7 +193,7 @@ enum CmgTransportStream {
                 guard pid == videoPID else { continue }
                 try flush()
                 let length = 9 + Int(bytes[offset+8])
-                guard offset + length <= packet + 188 else { throw CmgError.message("跨包 PES 头暂不支持") }
+                guard offset + length <= packet + 188 else { throw CmgError.message(L10n.text("跨包 PES 头暂不支持")) }
                 header = Array(bytes[offset..<(offset+length)])
                 let pesLength = Int(header[4]) << 8 | Int(header[5])
                 expectedPayload = pesLength == 0 ? nil : max(0, pesLength - (length - 6))
@@ -205,7 +205,7 @@ enum CmgTransportStream {
             payloadCapacity += packet + 188 - offset; payload += bytes[offset..<(packet+188)]
         }
         try flush()
-        guard let videoPID else { throw CmgError.message("视频分段没有找到 H.264 PES") }
+        guard let videoPID else { throw CmgError.message(L10n.text("视频分段没有找到 H.264 PES")) }
         var counter: Int?
         for packet in stride(from: 0, to: bytes.count, by: 188) {
             let pid = Int(bytes[packet+1] & 31) << 8 | Int(bytes[packet+2])

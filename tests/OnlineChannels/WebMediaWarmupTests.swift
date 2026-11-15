@@ -21,10 +21,10 @@ struct WebMediaWarmupTests {
         let warmupView = NSView()
         let inputs: Inputs
         var completion: ((ResolvedWebMedia) -> Void)?
-        var failure: ((String) -> Void)?
+        var failure: ((String.LocalizationValue) -> Void)?
         var requested: URL?
         init(_ inputs: Inputs) { self.inputs = inputs }
-        func resolve(_ url: URL, completion: @escaping (ResolvedWebMedia) -> Void, failure: @escaping (String) -> Void) {
+        func resolve(_ url: URL, completion: @escaping (ResolvedWebMedia) -> Void, failure: @escaping (String.LocalizationValue) -> Void) {
             requested = url; self.completion = completion; self.failure = failure
         }
         // Retain callbacks to simulate a result already queued before cancellation.

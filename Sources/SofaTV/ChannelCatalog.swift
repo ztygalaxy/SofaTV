@@ -21,12 +21,16 @@ struct Channel: Identifiable, Codable, Hashable, Sendable {
     var customGroup: String? = nil
     var displayName: String { customName ?? name }
     var displayGroup: String { customGroup ?? group }
+    static func groupTitle(_ group: String) -> String {
+        group == "未分组" ? L10n.text("未分组") : group
+    }
     var preferenceKey: String {
         if let id = epgID?.trimmingCharacters(in: .whitespacesAndNewlines), !id.isEmpty { return "epg:" + id }
         return id
     }
     func matches(_ query: String) -> Bool {
-        query.isEmpty || [name, group, displayName, displayGroup].contains { $0.localizedCaseInsensitiveContains(query) }
+        query.isEmpty || [name, group, displayName, displayGroup, Self.groupTitle(displayGroup)]
+            .contains { $0.localizedCaseInsensitiveContains(query) }
     }
 
     func removing(_ source: URL) -> Channel? {
@@ -61,6 +65,18 @@ struct ChannelList: Identifiable, Codable, Hashable, Sendable {
     var removedChannels: Set<Channel.Identity>? = nil
     var removedGroups: Set<String>? = nil
     var removedSources: Set<RemovedSource>? = nil
+
+    var displayName: String {
+        switch (kind, name) {
+        case (.legacy, "现有频道"): L10n.text("现有频道")
+        case (.online, "默认频道"): L10n.text("默认频道")
+        case (.online, "在线频道列表"): L10n.text("在线频道列表")
+        default: name
+        }
+    }
+    var displayDetail: String {
+        kind == .legacy && detail == "升级前保存的频道" ? L10n.text("升级前保存的频道") : detail
+    }
 
     var remoteURL: URL? {
         guard kind == .online, let url = URL(string: detail),
@@ -113,7 +129,7 @@ enum ChannelCatalog {
             }
         }
         result = merge(result, into: [])
-        guard !result.isEmpty else { throw NSError(domain: "SofaTV", code: 1, userInfo: [NSLocalizedDescriptionKey: "没有找到可播放的 HTTP/HTTPS 频道，请导入 M3U 或 TXT 列表。直接播放地址请使用“打开直播”。"]) }
+        guard !result.isEmpty else { throw NSError(domain: "SofaTV", code: 1, userInfo: [NSLocalizedDescriptionKey: L10n.text("没有找到可播放的 HTTP/HTTPS 频道，请导入 M3U 或 TXT 列表。直接播放地址请使用“打开直播”。")]) }
         return result
     }
 

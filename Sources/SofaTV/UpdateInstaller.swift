@@ -14,6 +14,9 @@ enum UpdateInstaller {
         let process = Process()
         process.executableURL = helper
         process.arguments = [requestURL.path]
+        var environment = ProcessInfo.processInfo.environment
+        environment["SOFATV_UPDATE_LANGUAGE"] = L10n.language.rawValue
+        process.environment = environment
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
@@ -23,8 +26,13 @@ enum UpdateInstaller {
         }.value
         guard response == "READY\n" else {
             throw NSError(domain: "SofaTV.Update", code: 1, userInfo: [NSLocalizedDescriptionKey:
-                response.hasPrefix("ERROR:") ? String(response.dropFirst(6)).trimmingCharacters(in: .newlines) : "更新安装程序未能启动，请重试。"])
+                response.hasPrefix("ERROR:") ? String(response.dropFirst(6)).trimmingCharacters(in: .newlines) : L10n.text("更新安装程序未能启动，请重试。")])
         }
         NSApp.terminate(nil)
+    }
+
+    static func message(for error: Error) -> String {
+        (error as? UpdateInstallationError)?.message(inEnglish: L10n.language == .english)
+            ?? error.localizedDescription
     }
 }

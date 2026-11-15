@@ -1,259 +1,267 @@
 <div align="center">
-  <img src="Assets/AppIcon.svg" width="128" alt="沙发电视图标">
-  <h1>SofaTV / 沙发电视</h1>
-  <p><strong>坐回沙发，好好看电视。</strong></p>
-  <p>为 macOS 设计的原生直播电视播放器，随手选台、浏览节目单，也能放在桌面小窗里慢慢看。</p>
+  <img src="Assets/AppIcon.svg" width="128" alt="SofaTV app icon">
+  <h1>SofaTV</h1>
+  <p><strong>Sit back on the sofa and enjoy the show.</strong></p>
+  <p>A native live TV player for macOS. Flip through channels, see what's on, or keep the TV in a small window on your desktop.</p>
+  <p>English · <a href="README-zh.md">简体中文</a></p>
 </div>
 
 <p align="center">
   <a href="https://www.apple.com/macos/"><img src="https://img.shields.io/badge/macOS-14%2B-111111?logo=apple" alt="macOS 14+"></a>
-  <img src="https://img.shields.io/badge/Apple_Silicon_%2F_Intel-supported-16A085" alt="支持 Apple Silicon 与 Intel">
+  <img src="https://img.shields.io/badge/Apple_Silicon_%2F_Intel-supported-16A085" alt="Supports Apple Silicon and Intel">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0--only-blue.svg" alt="GPL-3.0-only"></a>
 </p>
 <p align="center">
-  <a href="https://github.com/ztygalaxy/SofaTV/releases/latest"><strong>下载沙发电视</strong></a>
-  · <a href="#下载安装">安装上手</a>
-  · <a href="#使用指南">使用指南</a>
-  · <a href="#常见问题">常见问题</a>
-  · <a href="https://github.com/ztygalaxy/SofaTV/issues">问题反馈</a>
+  <a href="https://github.com/ztygalaxy/SofaTV/releases/latest"><strong>Download SofaTV</strong></a>
+  · <a href="#install">Install</a>
+  · <a href="#how-to-use">How to use</a>
+  · <a href="#faq">FAQ</a>
+  · <a href="https://github.com/ztygalaxy/SofaTV/issues">Report an issue</a>
 </p>
 
+I've always liked watching TV. There was no need to decide what to watch first. I'd switch to a channel and see what was on. In the living room, my family would sit together, watch a show, and chat. It made an ordinary evening feel a little warmer.
 
-我一直喜欢看电视：不用先决定看什么剧，调到哪台就看哪台。客厅里，一家人围坐着，看节目、聊几句，平常的夜晚也会暖起来。
+Once I started working, we had fewer evenings together, so I made SofaTV.
 
-工作以后，一家人团聚的机会少了，于是做了沙发电视。
+I wanted to bring a bit of that feeling to the Mac, wherever I happen to be.
 
-希望把窝在沙发里、和家人一起看电视的感觉，带到 Mac 上，带在身边。
-
-## 界面预览
+## Screenshots
 
 <p align="center">
-  <a href="docs/images/app-fullscreen.jpg"><img src="docs/images/app-fullscreen.jpg" width="960" alt="全屏播放、频道节目单与节目预约"></a>
+  <a href="docs/images/app-fullscreen.jpg"><img src="docs/images/app-fullscreen.jpg" width="960" alt="Full-screen playback with the program guide and reminders"></a>
 </p>
 <table>
   <tr>
-    <td width="14.28%" align="center"><a href="docs/images/app-idle.png"><img src="docs/images/app-idle.png" width="160" alt="沙发电视启动页面"></a></td>
-    <td width="14.28%" align="center"><a href="docs/images/app-playing.png"><img src="docs/images/app-playing.png" width="160" alt="沙发电视窗口播放与节目单"></a></td>
-    <td width="14.28%" align="center"><a href="docs/images/app-fullscreen.jpg"><img src="docs/images/app-fullscreen.jpg" width="160" alt="沙发电视全屏播放与节目单"></a></td>
-    <td width="14.28%" align="center"><a href="docs/images/app-mini-player.png"><img src="docs/images/app-mini-player.png" width="160" alt="沙发电视桌面小窗模式"></a></td>
-    <td width="14.28%" align="center"><a href="docs/images/app-channel-manager.png"><img src="docs/images/app-channel-manager.png" width="160" alt="编辑频道来源页面"></a></td>
-    <td width="14.28%" align="center"><a href="docs/images/app-program-reservations.png"><img src="docs/images/app-program-reservations.png" width="160" alt="节目单中预约节目并显示预约成功提示"></a></td>
-    <td width="14.28%" align="center"><a href="docs/images/app-program-search.png"><img src="docs/images/app-program-search.png" width="96" alt="搜索「欢乐」后显示正在播出和即将播出的节目"></a></td>
+    <td width="14.28%" align="center"><a href="docs/images/app-idle.png"><img src="docs/images/app-idle.png" width="160" alt="SofaTV at startup"></a></td>
+    <td width="14.28%" align="center"><a href="docs/images/app-playing.png"><img src="docs/images/app-playing.png" width="160" alt="Windowed playback with the program guide"></a></td>
+    <td width="14.28%" align="center"><a href="docs/images/app-fullscreen.jpg"><img src="docs/images/app-fullscreen.jpg" width="160" alt="Full-screen playback with the program guide"></a></td>
+    <td width="14.28%" align="center"><a href="docs/images/app-mini-player.png"><img src="docs/images/app-mini-player.png" width="160" alt="SofaTV mini player"></a></td>
+    <td width="14.28%" align="center"><a href="docs/images/app-channel-manager.png"><img src="docs/images/app-channel-manager.png" width="160" alt="Channel source manager"></a></td>
+    <td width="14.28%" align="center"><a href="docs/images/app-program-reservations.png"><img src="docs/images/app-program-reservations.png" width="160" alt="A program reminder confirmation"></a></td>
+    <td width="14.28%" align="center"><a href="docs/images/app-program-search.png"><img src="docs/images/app-program-search.png" width="96" alt="Program search results showing live and upcoming shows"></a></td>
   </tr>
   <tr>
-    <td align="center"><strong>频道列表</strong><br><sub>搜索、收藏，选择想看的频道</sub></td>
-    <td align="center"><strong>播放与节目单</strong><br><sub>查看当天排期，直播继续播放</sub></td>
-    <td align="center"><strong>全屏与节目单</strong><br><sub>滑出频道列表，悬停浏览排期</sub></td>
-    <td align="center"><strong>桌面小窗模式</strong><br><sub>置顶播放，自由拖动与缩放</sub></td>
-    <td align="center"><strong>编辑频道来源</strong><br><sub>搜索频道，管理频道与播放线路</sub></td>
-    <td align="center"><strong>节目预约和管理</strong><br><sub>铃铛预约节目，统一查看与取消</sub></td>
-    <td align="center"><strong>节目搜索</strong><br><sub>跨频道搜节目，查看播出时间</sub></td>
+    <td align="center"><strong>Channel List</strong><br><sub>Find and favorite channels</sub></td>
+    <td align="center"><strong>Program Guide</strong><br><sub>Browse listings while TV plays</sub></td>
+    <td align="center"><strong>Full Screen</strong><br><sub>Open the channel list and guide</sub></td>
+    <td align="center"><strong>Mini Player</strong><br><sub>Keep a resizable window on top</sub></td>
+    <td align="center"><strong>Channel Sources</strong><br><sub>Manage sources and streams</sub></td>
+    <td align="center"><strong>Reminders</strong><br><sub>Set, view, or cancel reminders</sub></td>
+    <td align="center"><strong>Program Search</strong><br><sub>Find shows across channels</sub></td>
   </tr>
 </table>
 
 <table>
   <tr>
-    <td width="50%" align="center"><a href="docs/images/dock-idle.png"><img src="docs/images/dock-idle.png" width="50" alt="未播放时的 Dock 图标"></a></td>
-    <td width="50%" align="center"><a href="docs/images/dock-playing.png"><img src="docs/images/dock-playing.png" width="50" alt="播放时带当前频道台标的 Dock 图标"></a></td>
+    <td width="50%" align="center"><a href="docs/images/dock-idle.png"><img src="docs/images/dock-idle.png" width="50" alt="SofaTV Dock icon while idle"></a></td>
+    <td width="50%" align="center"><a href="docs/images/dock-playing.png"><img src="docs/images/dock-playing.png" width="50" alt="SofaTV Dock icon with the current channel logo"></a></td>
   </tr>
   <tr>
-    <td align="center"><strong>未播放</strong><br><sub>显示沙发电视 App 图标</sub></td>
-    <td align="center"><strong>播放中</strong><br><sub>有专属台标时，在右上角显示频道标记</sub></td>
+    <td align="center"><strong>Idle</strong><br><sub>Shows the SofaTV icon</sub></td>
+    <td align="center"><strong>Playing</strong><br><sub>Adds the channel logo when available</sub></td>
   </tr>
 </table>
 
-## 主要功能
+## Features
 
-| 功能 | 说明 |
+| Feature | What you can do |
 | --- | --- |
-| 原生播放 | 支持清晰度选择、直播延迟模式和画面拉伸，提供网页来源的解析与播放支持。 |
-| 节目单预览 | 悬停浏览当天节目单，自动定位当前时段；查看其他频道的排期时，直播继续播放。 |
-| 节目搜索 | 输入节目名，查看各频道的播出时间。正在播出的节目可直接切台，未开播的节目可点铃铛预约。 |
-| 节目预约 | 点击节目旁的铃铛，在开播前 10 秒收到系统通知；点击通知切台。 |
-| 全屏选台 | 从画面左侧唤出频道列表，搜索、收藏、预览节目单或换台。 |
-| 置顶小窗 | 一键切换桌面小窗，自由移动、按比例缩放，随时返回主窗口。 |
-| 频道来源 | 导入本地或在线 M3U / TXT 列表，合并重复频道，按来源查看和删除频道、线路。 |
-| 频道整理 | 自定义名称与分组，调整频道和分组顺序，导入、导出个人频道配置。 |
-| 在线更新 | 启动时后台更新已添加的在线列表，更新失败仍可使用上次保存的频道。 |
-| 自动恢复 | 断流或持续没有播放进度时尝试重连、切换备用线路，支持断网恢复与睡眠唤醒后重连。 |
-| 观看习惯 | 保存收藏、频道音量和静音状态，记住窗口、侧栏与分组设置，支持返回上一观看频道。 |
+| Native playback | Choose video quality and latency settings, stretch the picture, and play supported web sources. |
+| Program guide | Hover over a channel to see its daily schedule and jump to the current time while your channel keeps playing. |
+| Program search | Find live and upcoming shows by title across channels. Click a live show to tune in or use the bell to set a reminder. |
+| Program reminders | Get a notification 10 seconds before a show starts. Click it to tune in. |
+| Full-screen channel browser | Reveal the channel list at the left edge to search, favorite, preview listings, or switch channels. |
+| Mini player | Pin the player above other windows, move or resize it, and return to the main window at any time. |
+| Channel sources | Import local or online M3U and TXT lists, merge duplicate channels, and manage streams by source. |
+| Channel organization | Rename channels and groups, reorder them, and import or export your configuration. |
+| Online refresh | Refresh saved online lists at launch and keep using the cached lists if a refresh fails. |
+| Playback recovery | Reconnect or switch to a backup stream after a stall, network outage, or system wake. |
+| Personal preferences | Keep favorites and per-channel volume, remember window and sidebar settings, and switch back to your previous channel. |
+| Language and theme | Use English or Simplified Chinese with a dark, light, or system theme. |
 
-## 下载安装
+## Install
 
-需要 **macOS 14 或更高版本**，支持 Apple Silicon 和 Intel Mac。前往 [最新版本](https://github.com/ztygalaxy/SofaTV/releases/latest)，按芯片类型选择 DMG 或 ZIP 安装包。
+SofaTV requires **macOS 14 or later** and runs on Apple Silicon and Intel Macs. Choose the DMG or ZIP for your Mac on the [latest release](https://github.com/ztygalaxy/SofaTV/releases/latest).
 
-| 你的 Mac | 安装包 |
+| Your Mac | Installer |
 | --- | --- |
-| Apple Silicon（M 系列芯片） | `SofaTV-<版本>-arm64.dmg` / `.zip` |
-| Intel 处理器 | `SofaTV-<版本>-x86_64.dmg` / `.zip` |
+| Apple Silicon (M-series) | `SofaTV-<version>-arm64.dmg` or `.zip` |
+| Intel | `SofaTV-<version>-x86_64.dmg` or `.zip` |
 
-打开 DMG，将 **沙发电视.app** 拖入“应用程序”文件夹即可安装。也可以解压 ZIP，将其中的 `.app` 移入“应用程序”；ZIP 内的应用文件名包含版本和芯片类型，打开后仍显示为“沙发电视”。
+Open the DMG and drag the application into Applications. If you downloaded the ZIP, unzip it and move the application into Applications. The ZIP's application filename includes the version and architecture.
 
-## 使用指南
+## How to use
 
-### 第一次使用
+### First launch
 
-1. **添加频道**：打开“频道 → 导入在线列表…”。地址框已预填参考来源，可以直接点击“打开”，也可以换成自己的地址；本地列表通过“导入频道文件…”添加。
-2. **选台观看**：点击左侧频道开始播放，用搜索框查找频道，点星标加入收藏。
-3. **按习惯整理**：在“频道 → 整理频道分组…”中改名、分组和排序；将鼠标停在频道上，还可以浏览当天节目单。
+1. **Add channels.** Choose **Channels → Import Online List…**. Use the suggested URL for testing or enter your own. To load a local list, choose **Import Channel File…**.
+2. **Tune in.** Click a channel in the sidebar. Use search to find channels and programs, and click a star to save a favorite.
+3. **Organize your channels.** Choose **Channels → Organize Channel Groups…** to rename, group, or reorder channels. Hover over a channel to see its daily schedule.
 
-首次使用请先添加频道来源，应用预填地址仅供测试交流使用。
+SofaTV needs a channel source before you can watch. The suggested source is for testing and discussion.
 
-### 频道与节目单
+### Channels and program guide
 
-用「搜索频道或节目」查找频道、分组和节目名称。点击正在播出的节目可切台，未开播的节目可用铃铛预约。切到「收藏」后，搜索范围限于收藏频道。
+Use **Search channels or shows** to find channels, groups, or programs. Click a live result to switch channels. Use the bell next to an upcoming show to set a reminder. Switch to **Favorites** to search only favorite channels.
 
-拖动列表与视频之间的分隔线可调整宽度，点击视频左侧的箭头可收起或展开列表。
+Drag the divider between the list and the video to resize the sidebar. The arrow at the left side of the player opens or closes it.
 
-正在播放的频道带有青色竖条。有专属台标时，Dock 图标右上角也会显示该台标；使用默认电视图标的频道则保留应用原图标。
+A teal bar marks the active channel. For channels with a dedicated logo, SofaTV also shows that logo on the Dock icon.
 
-将鼠标停在频道上，右侧会滑出当天的节目单，并定位正在播出的节目。移入面板可滚动查看前后排期，点击“回到当前”可返回当前时段；鼠标移回视频后，面板自动收起。预览其他频道的节目单时，当前直播继续播放。
+Hover over a channel to open its schedule. Scroll the panel to browse the day, click **Back to Now** to return to the current time, or move the pointer back onto the video to close the panel. The current channel keeps playing while you browse.
 
-正在观看的频道以青色标记“当前节目”；预览其他频道时，以白色标记“正在播出”。
+The guide highlights the currently watched program in teal. Other channels show **On Now**. If there is a gap in the day's schedule, the guide and channel row show the next show as **Upcoming** until it starts.
 
-当前时段缺少排期时，频道行会显示当天的下一档节目，节目单同步定位、高亮并标注“即将播出”；到开播时间后自动切换为正常的当前节目标记。
+### Program reminders
 
-### 节目预约
+Click the bell next to an upcoming show in the guide or search results. SofaTV asks for notification permission the first time you set a reminder.
 
-点击节目单中未开播节目旁的铃铛，即可添加开播提醒。首次添加时会申请系统通知权限，启动应用不会弹出权限请求。
+macOS sends the reminder 10 seconds before the show starts. Click it to tune in. To keep it on the desktop, enable desktop notifications and choose **Persistent** in **System Settings → Notifications → SofaTV**. On older versions of macOS, choose **Alerts**.
 
-节目开始前 10 秒发送 macOS 系统通知。横幅消失后，仍可在通知中心点击提醒切换到对应频道。节目结束满一天后，沙发电视会在下次刷新时清理旧预约及其通知。
+If the banner has disappeared, you can still open it in Notification Center. SofaTV clears old reminders and notifications after the program has been over for a day.
 
-在“播放 → 节目预约…”或节目单底部的“节目预约…”中查看、取消提醒，也可以直接点击“观看”。
+Open **Playback → Program Reminders…** or use the button at the bottom of the guide to view or cancel reminders, or click **Watch** to tune in.
 
-通知显示受系统通知设置、专注模式及电脑睡眠状态影响；未收到提醒时，可在“系统设置 → 通知”中检查沙发电视的权限。
+macOS notification settings, Focus, and sleep affect delivery. If a reminder is missing, check SofaTV's permission in **System Settings → Notifications**.
 
-### 全屏与置顶小窗
+### Full screen and mini player
 
-**全屏观看**：双击视频，或点击右下角全屏按钮。将鼠标移到画面左侧，滑出频道列表；悬停查看节目单，点击频道换台。鼠标移回右侧后列表自动收起。按 `Esc` 会依次收起节目单和频道列表；两者都未展开时，再按 `Esc` 退出全屏。
+**Full screen.** Double-click the video or use the full-screen button. Move the pointer to the left edge to reveal the channel list, hover to preview the guide, or click to switch channels. Move back over the video to hide the browser. Press `Esc` to close the guide, then the channel browser, then exit full screen.
 
-**置顶小窗**：点击视频右上角的图钉进入。拖动画面移动位置，拖动边缘按比例缩放；再次点击图钉、双击画面或按 `Esc` 返回主窗口。
+**Mini player.** Click the pin at the top right. Drag the video to move the mini player, and drag its edges to resize it proportionally. Click the pin again, double-click the video, or press `Esc` to return.
 
-全屏和小窗沿用当前播放，无需重新选台。移动鼠标可唤出视频操作按钮。
+Playback continues while you move between the main window, full screen, and the mini player. Move the pointer to reveal playback controls.
 
-**停止播放**：点击右上角图钉旁的电源按钮，或选择“播放 → 停止播放”。全屏或小窗会返回主窗口，频道列表保留；手动停止后，网络恢复或电脑唤醒都不会重新开播。
+**Stop playback.** Click the power button next to the pin or choose **Playback → Stop Playback**. Full screen and the mini player return to the main window. Playback stays stopped after a network reconnection or system wake.
 
-### 音量与播放
+### Volume and playback
 
-- **音量**：在视频区域滚动鼠标滚轮，或拖动右下角音量条；音量按频道记忆。
-- **静音**：点击喇叭图标。切台时保持静音，再点一次恢复音量。
-- **刷新**：点击音量与全屏按钮之间的刷新图标，重新连接当前线路。
-- **播放选项**：在“播放”菜单中选择清晰度与“稳定 / 适中 / 低延迟”模式，或开启“拉伸画面”；实际可用的清晰度取决于直播来源。
-- **返回上一观看频道**：在“播放”菜单中切回上一个看过的频道。
+- **Volume.** Scroll over the video or use the volume slider. SofaTV remembers the volume for each channel.
+- **Mute.** Click the speaker. Mute carries over when you switch channels. Click the speaker again to unmute.
+- **Reload.** Use the reload button near the volume slider to reconnect to the current stream.
+- **Playback options.** Use the **Playback** menu to choose video quality, switch between **Stable**, **Balanced**, and **Low Latency**, or enable **Stretch Video**. Available quality depends on the stream.
+- **Previous channel.** Choose **Back to Previous Channel** to return to the last channel you watched.
 
-### 频道列表与来源
+### Settings
 
-| 导入内容 | 菜单入口 |
+Open **SofaTV → Settings…** or press `⌘,`. The theme defaults to **Dark**. You can also choose **Light** or **Follow System**.
+
+The interface follows the Mac's primary language by default. Chinese uses Simplified Chinese, and other system languages use English. You can switch to **English** or **简体中文** instantly in Settings.
+
+### Channel sources
+
+| Source | Menu command |
 | --- | --- |
-| 本地 M3U / TXT 文件 | 频道 → 导入频道文件… |
-| 在线 M3U / TXT 列表 | 频道 → 导入在线列表… |
-| 单条直播地址 | 频道 → 打开直播地址… |
+| Local M3U or TXT file | Channels → Import Channel File… |
+| Online M3U or TXT list | Channels → Import Online List… |
+| A single live stream | Channels → Open Stream URL… |
 
-打开“频道 → 编辑频道来源…”可查看已导入的列表、单独更新在线来源或删除整个来源。点击一份来源可查看具体频道，展开频道可复制或删除播放线路。
+Open **Channels → Manage Channel Sources…** to view imported lists, refresh an online source, or delete a list. Click a source to inspect its channels. Expand a channel to copy or remove its streams.
 
-同名、同分组的频道会合并播放线路。从来源详情中删除频道或线路，只影响该来源；其他来源提供的内容仍会保留。主窗口支持右键删除频道或分组，手动切换线路则使用“播放 → 播放线路”。
+Channels with the same name and group share streams. Deleting a channel or stream from a source affects that source; duplicates from other sources remain. In the main window, right-click to delete a channel or group. To switch streams manually, use **Playback → Stream**.
 
-### 整理频道与分组
+### Organize channels and groups
 
-打开“频道 → 整理频道分组…”：
+Open **Channels → Organize Channel Groups…**.
 
-- **频道**：拖动或点击上下箭头调整顺序；点击铅笔修改显示名称和分组。输入新分组名以创建新分组，或点击“选择已有分组”。
-- **分组**：调整分组顺序、重命名分组；使用已有名称时会合并显示在该分组下。搜索时暂停拖动排序，清空搜索即可继续。
-- **恢复默认顺序**：恢复来源中的频道顺序及默认分组顺序，不清除自定义名称和分组。
-- **导出配置 / 导入配置**：用 JSON 文件备份或恢复来源、收藏、顺序、自定义名称与分组和音量。恢复前会确认，并停止当前播放；不支持的文件不会覆盖现有配置。
+- **Channels.** Drag rows or use the arrow buttons to move them. Click the pencil to change a channel's display name or group. Enter a new group name to create a group, or choose an existing one.
+- **Groups.** Reorder or rename groups. Using an existing group name merges the groups. Clear the search to resume drag-based reordering.
+- **Restore Default Order.** Restore the source's channel order and the default group order. Custom names and group assignments are preserved.
+- **Import or export configuration.** Back up or restore sources, favorites, ordering, display names, groups, and volume using JSON. SofaTV asks before restoring a configuration and stops playback if you proceed. An unsupported file leaves the current configuration intact.
 
-名称与分组的修改只影响本机显示，节目单仍按原始频道信息匹配。在线更新会保留已匹配频道的收藏、音量和整理设置。
+Display names and groups are local to the app. The guide matches channels using their original information. Refreshing an online source preserves settings for channels SofaTV can match.
 
-### 在线更新频道
+### Online refresh
 
-添加在线来源后，每次启动都会先显示上次保存的频道，再在后台检查更新。更新成功后采用新的频道与线路，失败时继续使用原有列表，正在观看的直播不会因此中断。
+At launch, SofaTV shows the cached list for each online source and checks for updates in the background. If a source fails to refresh, its cached list remains available. An update does not interrupt current playback.
 
-选择“频道 → 更新频道列表”可手动检查全部在线来源，也可以在“编辑频道来源…”中单独更新，并查看上次检查时间与失败提示。
+Choose **Channels → Refresh Channel Lists** to check every online source. Use **Manage Channel Sources…** to refresh a single source and see its last check or error.
 
-从在线来源移除的频道和线路会保留删除记录，需要时可在来源详情中选择“恢复已移除内容”。删除整个来源后，需要重新导入才会添加回来。
+SofaTV remembers channels and streams removed from an online source. To bring them back, choose **Restore Removed Items** in the source details. To restore an entire deleted source, import it again.
 
 <details>
-<summary>M3U 与 TXT 格式示例</summary>
+<summary>M3U and TXT examples</summary>
 
-M3U 使用 `group-title` 指定分组：
+M3U uses `group-title` to assign a group.
 
 ```m3u
 #EXTM3U
-#EXTINF:-1 group-title="卫视频道",示例卫视
+#EXTINF:-1 group-title="Example Group",Example Channel
 https://example.com/live.m3u8
 ```
 
-TXT 使用“频道名,地址”，通过 `分组名,#genre#` 切换分组：
+In TXT, use `Channel Name,URL` for a channel and `Group Name,#genre#` to start a group.
 
 ```text
-卫视频道,#genre#
-示例卫视,https://example.com/live.m3u8
+Example Group,#genre#
+Example Channel,https://example.com/live.m3u8
 ```
 
-示例地址仅用于说明格式，请替换为可用的直播地址。
+Replace the example addresses with working stream URLs.
 
 </details>
 
-### 快捷操作
+### Shortcuts
 
-| 快捷方式 | 操作 |
+| Shortcut | Action |
 | --- | --- |
-| `↑` / `↓` | 上一个 / 下一个频道 |
-| `←` / `→` | 降低 / 增大当前频道音量 |
-| 双击视频 | 切换普通窗口与全屏；小窗中双击返回主窗口 |
-| `Esc`（全屏） | 先收起节目单和频道列表，再按退出全屏 |
-| `Esc`（小窗） | 返回主窗口 |
-| `⌘O` | 导入频道文件 |
-| `⇧⌘O` | 导入在线列表 |
-| `⌘L` | 打开直播地址 |
+| `↑` / `↓` | Previous or next channel |
+| `←` / `→` | Lower or raise channel volume |
+| Double-click video | Toggle full screen or return from the mini player |
+| `Esc` (full screen) | Dismiss the guide or channel browser, then exit full screen |
+| `Esc` (mini player) | Return to the main window |
+| `⌘,` | Open Settings |
+| `⌘O` | Import a channel file |
+| `⇧⌘O` | Import an online list |
+| `⌘L` | Open a stream URL |
 
-## 常见问题
+## FAQ
 
 <details>
-<summary>为什么有些频道连接慢，或者无法播放？</summary>
+<summary>Why are some channels slow to connect or unavailable?</summary>
 
-连接速度受直播来源、网络和来源网站的访问要求影响，部分网页来源还需要先解析播放地址。可点击刷新重新连接，或在“播放 → 播放线路”中尝试其他线路；频道地址失效时，可先选择“频道 → 更新频道列表”。
+Connection speed depends on the source and network. Some web sources also need time to resolve the stream. Try reloading, switching streams under **Playback → Stream**, or choosing **Channels → Refresh Channel Lists** if the address has expired.
 
-沙发电视优先使用原生播放，网页来源在后台解析，必要时使用网页播放通道。
+SofaTV prefers native playback and can fall back to web playback for supported sources.
 
 </details>
 
 <details>
-<summary>断流后会自动恢复吗？</summary>
+<summary>Does SofaTV recover from a dropped stream?</summary>
 
-断流或持续没有播放进度时，应用会尝试重连，并在有备用线路时自动切换。断网时等待网络恢复，电脑唤醒后重新连接；全部线路尝试失败后会暂停自动重试，此时可以手动刷新或换台。
-
-</details>
-
-<details>
-<summary>为什么部分频道没有节目单？</summary>
-
-节目信息依赖节目单来源，以及频道名称、标识的匹配结果。匹配成功时会显示当前节目和当天已获取的排期，数据自动更新。不同频道的排期完整度可能不同；没有节目单也可以正常选台播放。
+SofaTV tries to reconnect after a stall or dropped stream and switches to a backup if available. It waits for the network to return when offline and reconnects after system wake. If it exhausts the available streams, you can reload manually or switch channels.
 
 </details>
 
 <details>
-<summary>如何更新应用？</summary>
+<summary>Why is the guide missing for some channels?</summary>
 
-应用启动后会在后台检查新版本；正在观看时会跳过自动提示。也可以随时选择“沙发电视 → 检查更新…”。
-
-点击“下载并安装”会下载对应芯片的 ZIP 更新包，校验后替换应用并重新打开，保留频道与设置。也可以选择“稍后”或“跳过此版本”；跳过的版本仍可通过手动检查查看。
-
-历史版本和更新说明见 [Releases](https://github.com/ztygalaxy/SofaTV/releases)。
+Listings depend on the available guide data and how well channel names or identifiers match it. Coverage varies by channel. A channel can play even when it has no guide.
 
 </details>
 
-## 数据与隐私
+<details>
+<summary>How do I update SofaTV?</summary>
 
-频道列表、收藏、上一观看频道记录、节目预约、音量、静音状态、自定义名称与分组、排序，以及窗口和侧栏设置都保存在本机，不上传到项目服务器。
+SofaTV checks for updates in the background after launch and avoids showing automatic prompts while you watch. To check manually, choose **SofaTV → Check for Updates…**.
 
-网页解析使用临时网站数据，播放所需的 Cookie 仅在当前运行期间使用，不跨启动保留。
+**Download and Install** downloads and verifies the ZIP for your Mac, then replaces and reopens the app. Your channels and settings are kept. You can also choose **Later** or **Skip This Version**. A manual check can still show a skipped version.
 
-## 开发与贡献
+See [Releases](https://github.com/ztygalaxy/SofaTV/releases) for version history and release notes.
 
-应用使用 **Swift 6、SwiftUI、AppKit、AVKit 和 WebKit**。欢迎通过 [Issue](https://github.com/ztygalaxy/SofaTV/issues) 反馈问题、提出想法，或提交 Pull Request；参与项目的朋友见 [Contributors](https://github.com/ztygalaxy/SofaTV/graphs/contributors)。
+</details>
 
-本地构建需要 macOS 14+、Swift 6 工具链、Python 3 和 Clang。Swift 与 Clang 可由 Xcode 或 Command Line Tools 提供。
+## Data and privacy
+
+Channel lists, favorites, viewing history, reminders, volume, mute, display names and groups, ordering, window layout, language, and theme are stored on your Mac.
+
+Web playback uses temporary website data. Playback cookies are kept only for the current app session.
+
+## Development and contributions
+
+SofaTV uses **Swift 6, SwiftUI, AppKit, AVKit, and WebKit**. Open an [issue](https://github.com/ztygalaxy/SofaTV/issues) to report a problem or suggest an idea, or submit a pull request. See the [contributors](https://github.com/ztygalaxy/SofaTV/graphs/contributors).
+
+To build locally, install a Swift 6 toolchain, Python 3, and Clang on macOS 14 or later. Xcode or Command Line Tools provides Swift and Clang.
 
 ```sh
 git clone https://github.com/ztygalaxy/SofaTV.git
@@ -261,24 +269,24 @@ cd SofaTV
 ./scripts/build-app.sh
 ```
 
-产物位于 `dist/沙发电视.app`，包含原生播放所需的动态库、图标和资源。
+The application bundle is written to `dist/沙发电视.app` and includes the libraries, icons, and resources needed for playback.
 
-生成当前芯片对应的 ZIP 和 DMG：
+Build a ZIP and DMG for the current architecture.
 
 ```sh
 ./scripts/package-app.sh
 ```
 
-运行核心检查：
+Run the core checks.
 
 ```sh
 ./scripts/test-core.sh
 ```
 
-## 许可证与来源
+## License and sources
 
-沙发电视采用 [GNU GPL v3 only](LICENSE)（`GPL-3.0-only`）。第三方与派生源码继续适用各自文件中保留的版权和许可证；频道台标的来源与许可见 [频道台标来源](Assets/ChannelLogos/SOURCE.md)。
+SofaTV is licensed under the [GNU General Public License v3 only](LICENSE) (`GPL-3.0-only`). Third-party and derived source files retain their own copyrights and licenses. See [Channel logo sources](Assets/ChannelLogos/SOURCE.md).
 
-频道、网站、台标及外部媒体内容的权利归各自权利人所有。本项目不提供内容授权，也不保证任何外部直播源持续可用。使用和分发时请遵守所在地法律以及内容提供方条款。
+Rights to channel names, websites, logos, and media belong to their respective owners. Follow local laws and provider terms when using or distributing source lists. SofaTV does not provide rights to external content or guarantee stream availability.
 
-推荐的在线频道数据来源于互联网，仅用于开发测试与技术交流。如涉及侵权，请[联系我](mailto:zhangty1996@163.com)删除。
+The suggested online source is publicly available and intended for development and testing. For a takedown request, [contact the maintainer](mailto:zhangty1996@163.com).

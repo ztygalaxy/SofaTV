@@ -2,7 +2,7 @@
 from pathlib import Path
 import subprocess
 
-source = Path('Sources/SofaTV/ChannelCatalog.swift').read_text()
+source = Path('Sources/SofaTV/Localization.swift').read_text() + Path('Sources/SofaTV/ChannelCatalog.swift').read_text()
 program = source + r'''
 
 let first = try ChannelCatalog.parse("#EXTM3U\n#EXTINF:-1 group-title=\"TV\",One\nwebview://https://example.com/live\n#EXTINF:-1 group-title=\"TV\",One\nhttps://example.com/a.m3u8\n#EXTINF:-1 group-title=\"TV\",One\nhttps://example.com/a.m3u8")

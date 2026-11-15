@@ -18,7 +18,7 @@ struct MainWindowChrome: NSViewRepresentable {
     }
     final class ChromeView: NSView {
         private static let framePreferenceKey = "mainWindowFrame"
-        var windowTitle = "沙发电视"
+        var windowTitle = L10n.text("沙发电视")
         var onClose: (() -> Void)?
         private weak var configuredWindow: NSWindow?
         deinit { NotificationCenter.default.removeObserver(self) }

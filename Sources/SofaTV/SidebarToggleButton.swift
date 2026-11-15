@@ -31,9 +31,12 @@ final class SidebarToggleButton: NSButton {
     func setCollapsed(_ collapsed: Bool) {
         guard collapsedState != collapsed else { return }
         collapsedState = collapsed
-        let label = collapsed ? "展开侧边栏" : "收起侧边栏"
         image = NSImage(systemSymbolName: collapsed ? "chevron.right" : "chevron.left", accessibilityDescription: nil)?
             .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 16, weight: .semibold))
+        refreshLanguage()
+    }
+    func refreshLanguage() {
+        let label = collapsedState == true ? L10n.text("展开侧边栏") : L10n.text("收起侧边栏")
         toolTip = label; setAccessibilityLabel(label)
     }
     override func updateTrackingAreas() {

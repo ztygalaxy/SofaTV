@@ -5,13 +5,24 @@ import Security
 public enum UpdateInstallationError: LocalizedError {
     case checksum, archive, application, signature, location
 
-    public var errorDescription: String? {
+    public var errorDescription: String? { message(inEnglish: false) }
+
+    public func message(inEnglish: Bool) -> String {
+        if inEnglish {
+            return switch self {
+            case .checksum: "The update failed its checksum. Download it again."
+            case .archive: "The update archive could not be extracted or contains invalid files."
+            case .application: "The app in the archive does not match this update."
+            case .signature: "The app in the archive failed signature verification."
+            case .location: "Move SofaTV to Applications before downloading and installing the update."
+            }
+        }
         switch self {
-        case .checksum: "下载的更新包校验失败，请重新下载。"
-        case .archive: "无法解压更新包，或更新包内容不正确。"
-        case .application: "更新包中的应用与本次更新不匹配。"
-        case .signature: "更新包中的应用签名验证失败。"
-        case .location: "请先将沙发电视移到“应用程序”文件夹，再下载并安装更新。"
+        case .checksum: return "下载的更新包校验失败，请重新下载。"
+        case .archive: return "无法解压更新包，或更新包内容不正确。"
+        case .application: return "更新包中的应用与本次更新不匹配。"
+        case .signature: return "更新包中的应用签名验证失败。"
+        case .location: return "请先将沙发电视移到“应用程序”文件夹，再下载并安装更新。"
         }
     }
 }

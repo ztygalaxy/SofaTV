@@ -42,24 +42,25 @@ import WebKit
                 self.recovery.begin(sourceCount: refreshed.sources.count, index: refreshedIndex)
                 self.start(refreshed, index: refreshedIndex)
             } else { self.start(channel, index: index) }
-            self.recordNative("自动恢复 · 线路 \(self.sourceIndex + 1) · " + reason)
+            self.recordNative(L10n.text("自动恢复 · 线路 \(self.sourceIndex + 1) · ") + reason)
         }
         monitor.onStatus = { [weak self] status in
-            self?.playbackStatus = status
-            self?.recordNative(status)
+            self?.playbackStatusText = status
+            self?.recordNative(L10n.text(status))
         }
         monitor.onExhausted = { [weak self] message in
             guard let self else { return }
             self.clearPlaybackEngines()
             self.warmup.cancel()
-            self.playbackStatus = message
-            self.recordNative("自动恢复已暂停，等待手动重试或网络恢复")
+            self.playbackStatusText = message
+            self.recordNative(L10n.text("自动恢复已暂停，等待手动重试或网络恢复"))
         }
         return monitor
     }()
     @Published var sourceIndex = 0
     @Published var webChannel: URL?
-    @Published var playbackStatus = "就绪"
+    @Published var playbackStatusText: String.LocalizationValue = "就绪"
+    var playbackStatus: String { L10n.text(playbackStatusText) }
     @Published private var playbackVolume = PlaybackVolume(
         isMuted: false,
         volumeBeforeMute: 0.3
@@ -80,11 +81,10 @@ import WebKit
     let warmup: WebMediaWarmup
     private var session = UUID()
     private var race = PlaybackRace()
-    @Published var playbackMetrics = "尚无播放统计"
-    @Published var nativeDiagnostic = "原生通道尚未启动"
+    @Published private var playbackMetricsText: String.LocalizationValue = "尚无播放统计"
+    var playbackMetrics: String { L10n.text(playbackMetricsText) }
     private var diagnostics: [String] = []
     func recordNative(_ message: String) {
-        nativeDiagnostic = message
         diagnostics.append(message)
         if diagnostics.count > 60 { diagnostics.removeFirst() }
     }
@@ -202,7 +202,7 @@ import WebKit
         if let fallback = deferredH5eIndex {
             allowReducedH5e = true; start(channel, index: fallback); return
         }
-        recordNative("播放异常：" + message)
+        recordNative(L10n.text("播放异常：") + message)
         recovery.failed(message)
     }
     private func start(_ channel: Channel, index: Int) {
@@ -211,12 +211,12 @@ import WebKit
         timeout?.cancel(); observation = nil; resolver.cancel(); session = UUID(); cmgLoader?.cancel(); cmgLoader = nil; videoVisible = false; webVideo = false; resolving = false; sourceIndex = index
         DockIconController.shared.reset()
         latestWebMedia = nil; deferredH5eIndex = nil
-        race.begin(); diagnostics = []; playbackMetrics = "尚无播放统计"; recordNative("等待媒体地址和解密会话")
+        race.begin(); diagnostics = []; playbackMetricsText = "尚无播放统计"; recordNative(L10n.text("正在准备播放线路"))
         let url = channel.sources[index]
         player.pause(); player.replaceCurrentItem(with: nil)
         if url.scheme == "webview" {
             guard let page = URL(string: String(url.absoluteString.dropFirst("webview://".count))), ["http", "https"].contains(page.scheme ?? "") else {
-                failed(channel, index: index, message: "无效的网页频道地址"); return
+                failed(channel, index: index, message: L10n.text("无效的网页频道地址")); return
             }
             startWeb(page, channel: channel, index: index)
             return
@@ -228,8 +228,8 @@ import WebKit
                let page = webpageURL(web.element) {
                 startWeb(page, channel: channel, index: index)
             }
-            playbackStatus = "原生视频解密中..."
-        } else { playbackStatus = "连接中…" }
+            playbackStatusText = "正在准备画面…"
+        } else { playbackStatusText = "连接中…" }
         playMedia(url, cookies: [], channel: channel, index: index)
     }
     private func webpageURL(_ url: URL) -> URL? {
@@ -254,31 +254,31 @@ import WebKit
         warmup.configure(pages: pages.count > fullCatalogueLimit ? priority : pages, prioritized: priority)
     }
     private func startWeb(_ page: URL, channel: Channel, index: Int) {
-        resolving = true; playbackStatus = "正在解析视频…"
+        resolving = true; playbackStatusText = "正在解析视频…"
         let token = session
         if let media = warmup.cachedMedia(for: page) {
             latestWebMedia = media
-            playbackStatus = "已预解析视频，连接中…"
+            playbackStatusText = "已预解析视频，连接中…"
             playMedia(media.url, cookies: media.cookies, cmgState: media.cmgState, channel: channel, index: index)
         }
         resolver.resolve(page, completion: { [weak self] media in
             guard let self, self.session == token, self.race.output != .native else { return }
             self.latestWebMedia = media
-            if !self.videoVisible && self.cmgLoader == nil { self.playbackStatus = "已发现视频，连接中…" }
+            if !self.videoVisible && self.cmgLoader == nil { self.playbackStatusText = "已发现视频，连接中…" }
             if self.cmgLoader == nil {
-                self.recordNative(self.resolver.cmgState == nil ? "发现媒体地址，等待央视频会话状态" : "已采集央视频会话状态")
+                self.recordNative(L10n.text("已发现视频，连接中…"))
                 self.playMedia(media.url, cookies: media.cookies, cmgState: media.cmgState, channel: channel, index: index)
             }
         }, failure: { [weak self] message in
             guard let self, self.session == token else { return }
             self.race.failWeb(self.race.token)
-            if !self.videoVisible && self.cmgLoader == nil { self.playbackStatus = message }
+            if !self.videoVisible && self.cmgLoader == nil { self.playbackStatusText = message }
         })
         enterCompatibility()
         timeout = Task { [weak self] in
             try? await Task.sleep(for: .seconds(40))
             guard !Task.isCancelled, let self, self.session == token, !self.videoVisible else { return }
-            self.failed(channel, index: index, message: "网页和原生通道均未能显示视频，请重试或切换线路。")
+            self.failed(channel, index: index, message: L10n.text("网页和原生通道均未能显示视频，请重试或切换线路。"))
         }
     }
     private func playMedia(_ url: URL, cookies: [HTTPCookie], cmgState: CmgSessionState? = nil, channel: Channel, index: Int) {
@@ -286,14 +286,14 @@ import WebKit
         let loader: CmgAssetLoader?
         if H5eRuntime.needsDecryption(url) {
             loader = CmgAssetLoader(cookies: cookies, quality: quality)
-            recordNative("已启动央视 H5E 原生解密通道")
+            recordNative(L10n.text("已启动 CCTV H5E 原生解密通道"))
         } else if resolving, let state = cmgState ?? resolver.cmgState, url.host?.hasSuffix("ysp.cctv.cn") == true {
             loader = CmgAssetLoader(state: state, cookies: cookies, quality: quality)
-            recordNative("已启动央视频原生解密通道")
+            recordNative(L10n.text("已启动 CCTV 原生解密通道"))
         } else { loader = nil }
         if let loader {
             cmgLoader = loader
-            if !videoVisible { playbackStatus = "原生视频解密中..." }
+            if !videoVisible { playbackStatusText = "正在准备画面…" }
             let token = session
             if H5eRuntime.needsDecryption(url), resolving, quality == 0, !allowReducedH5e {
                 loader.onBelowRequestedResolution = { [weak self, weak loader] actual, requested in
@@ -301,7 +301,7 @@ import WebKit
                         guard let self, let loader, self.session == token, self.cmgLoader === loader else { return }
                         self.observation = nil; self.player.pause(); self.player.replaceCurrentItem(with: nil)
                         self.cmgLoader = nil; loader.cancel(); self.deferredH5eIndex = index
-                        self.recordNative("央视直链最高实际 \(actual.description)，继续准备央视频高清线路（目标 \(requested.description)）")
+                        self.recordNative(L10n.text("CCTV 直链最高实际 \(actual.description)，继续准备高清备用线路（目标 \(requested.description)）"))
                         if let media = self.latestWebMedia { self.playMedia(media.url, cookies: media.cookies, cmgState: media.cmgState, channel: channel, index: index) }
                     }
                 }
@@ -318,7 +318,7 @@ import WebKit
                     switch result {
                     case .success(let local): self.installItem(AVPlayerItem(url: local), channel: channel, index: index)
                     case .failure(let error):
-                        self.recordNative("原生通道启动失败：" + error.localizedDescription)
+                        self.recordNative(L10n.text("原生通道启动失败：") + error.localizedDescription)
                         self.race.failNative(self.race.token)
                         if self.cmgLoader === loader { self.cmgLoader = nil }
                         // A short-lived warmed session can expire between
@@ -338,7 +338,10 @@ import WebKit
         }
         if cmgLoader != nil { return }
         // Encrypted Yangshipin media must wait for the matching CMG state.
-        if resolving, url.host?.hasSuffix("ysp.cctv.cn") == true, resolver.cmgState == nil { return }
+        if resolving, url.host?.hasSuffix("ysp.cctv.cn") == true, resolver.cmgState == nil {
+            recordNative(L10n.text("发现媒体地址，等待 CCTV 会话状态"))
+            return
+        }
         installItem(AVPlayerItem(asset: AVURLAsset(url: url, options: [AVURLAssetHTTPCookiesKey: cookies])), channel: channel, index: index)
     }
     private func installItem(_ item: AVPlayerItem, channel: Channel, index: Int) {
@@ -359,15 +362,15 @@ import WebKit
                 Task { @MainActor [weak self] in
                     guard let self, self.session == token, self.player.currentItem === item else { return }
                     if eventName == .AVPlayerItemDidPlayToEndTime {
-                        if !self.webVideo { self.failed(channel, index: index, message: "直播流已结束") }
+                        if !self.webVideo { self.failed(channel, index: index, message: L10n.text("直播流已结束")) }
                     } else if eventName == .AVPlayerItemFailedToPlayToEndTime {
-                        if !self.webVideo { self.failed(channel, index: index, message: endFailureMessage ?? "播放意外中断") }
+                        if !self.webVideo { self.failed(channel, index: index, message: endFailureMessage ?? L10n.text("播放意外中断")) }
                     } else if eventName == .AVPlayerItemNewErrorLogEntry, let event = item.errorLog()?.events.last {
-                        self.recordNative("播放器错误：\(event.errorDomain) / \(event.errorStatusCode)")
-                    } else if eventName == .AVPlayerItemPlaybackStalled { self.recordNative("播放器发生缓冲停顿") }
+                        self.recordNative(L10n.text("播放器错误：\(event.errorDomain) / \(event.errorStatusCode)"))
+                    } else if eventName == .AVPlayerItemPlaybackStalled { self.recordNative(L10n.text("播放器发生缓冲停顿")) }
                     else if let event = item.accessLog()?.events.last {
-                        self.playbackMetrics = "丢帧 \(event.numberOfDroppedVideoFrames) / 停顿 \(event.numberOfStalls)"
-                        self.recordNative("播放统计：" + self.playbackMetrics)
+                        self.playbackMetricsText = "丢帧 \(event.numberOfDroppedVideoFrames) / 停顿 \(event.numberOfStalls)"
+                        self.recordNative(L10n.text("播放统计：") + self.playbackMetrics)
                     }
                 }
             }
@@ -375,15 +378,15 @@ import WebKit
         }
         silenceNativeAudio()
         observation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
-            let status = item.status; let message = item.error?.localizedDescription ?? "所有线路均无法播放"
+            let status = item.status; let message = item.error?.localizedDescription ?? L10n.text("所有线路均无法播放")
             Task { @MainActor [weak self] in
                 guard let self, self.player.currentItem === item else { return }
                 if status == .readyToPlay {
-                    self.recordNative("媒体已加载，等待原生首帧")
-                    if !self.videoVisible { self.playbackStatus = "正在准备画面…" }
+                    self.recordNative(L10n.text("媒体已加载，等待原生首帧"))
+                    if !self.videoVisible { self.playbackStatusText = "正在准备画面…" }
                 } else if status == .failed {
                     let error = item.error as NSError?
-                    self.recordNative("原生播放失败：\(error?.domain ?? "未知") / \(error?.code ?? 0)；\(message)")
+                    self.recordNative(L10n.text("原生播放失败：\(error?.domain ?? L10n.text("未知")) / \(error?.code ?? 0)；\(message)"))
                     self.race.failNative(self.race.token)
                     if !self.resolving { self.failed(channel, index: index, message: message) }
                 }
@@ -394,7 +397,7 @@ import WebKit
         timeout = Task { [weak self] in
             try? await Task.sleep(for: .seconds(20))
             guard !Task.isCancelled, let self, self.session == token else { return }
-            self.failed(channel, index: index, message: "连接超时，请检查网络或切换线路")
+            self.failed(channel, index: index, message: L10n.text("连接超时，请检查网络或切换线路"))
         }
     }
     private func enterCompatibility() {
@@ -410,10 +413,10 @@ import WebKit
                 if let selected = self.selected { DockIconController.shared.show(channelName: selected.name) }
                 self.player.isMuted = true
                 self.resolver.setAudible(true, volume: self.volume)
-                self.playbackStatus = "网页视频播放中 · 原生准备中"
+                self.playbackStatusText = "网页视频播放中 · 原生准备中"
             } else if !ready {
                 self.race.failWeb(raceToken)
-                if !self.videoVisible { self.playbackStatus = "网页画面未就绪，继续等待原生通道…" }
+                if !self.videoVisible { self.playbackStatusText = "网页画面未就绪，继续等待原生通道…" }
             }
         }
     }
@@ -422,7 +425,7 @@ import WebKit
         sleepPrevention.setPlaying(true)
         let token = session
         let size = item.presentationSize
-        recordNative(size.width > 0 && size.height > 0 ? "原生首帧已显示 · \(Int(size.width))×\(Int(size.height))" : "原生首帧已显示")
+        recordNative(size.width > 0 && size.height > 0 ? L10n.text("原生首帧已显示 · \(Int(size.width))×\(Int(size.height))") : L10n.text("原生首帧已显示"))
         timeout?.cancel(); resolving = false
         recovery.ready()
         if let selected { DockIconController.shared.show(channelName: selected.name) }
@@ -432,7 +435,7 @@ import WebKit
             self.webVideo = false; self.videoVisible = true
             self.activateNativeAudio()
             self.resolver.suspendVideoForNative()
-            self.playbackStatus = "原生视频播放中"
+            self.playbackStatusText = "原生视频播放中"
             self.configureWarmup()
         }
     }
@@ -543,8 +546,8 @@ import WebKit
             sleepPrevention.setPlaying(false)
             DockIconController.shared.reset()
             player.pause(); player.replaceCurrentItem(with: nil)
-            playbackStatus = "暂无视频直链"
-            showError("这个频道没有可用线路。")
+            playbackStatusText = "暂无视频直链"
+            showError(L10n.text("这个频道没有可用线路。"))
             return
         }
         personalization.record(channel)
@@ -661,7 +664,7 @@ import WebKit
         onStopPlayback?(restoreWindow)
         clearPlaybackEngines()
         warmup.cancel()
-        selected = nil; sourceIndex = 0; playbackStatus = "就绪"
+        selected = nil; sourceIndex = 0; playbackStatusText = "就绪"
     }
     private func clearPlaybackEngines() {
         silenceNativeAudio()
@@ -737,7 +740,7 @@ import WebKit
         channelLists.removeAll { $0.id == list.id }; sourceUpdateErrors.removeValue(forKey: list.id); rebuildChannels()
     }
     func load(_ address: String, direct: Bool) async {
-        guard let url = URL(string: address), ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { showError("请输入有效的 HTTP/HTTPS 地址"); return }
+        guard let url = URL(string: address), ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { showError(L10n.text("请输入有效的 HTTP/HTTPS 地址")); return }
         if direct { play(Channel(name: url.lastPathComponent, group: "直播", url: url)); return }
         let list = channelLists.first(where: { $0.remoteURL == url }) ?? .online(url)
         let ticket = imports.begin(sourceID: list.id)
@@ -765,27 +768,27 @@ enum LibraryDeletion {
 
     var title: String {
         switch self {
-        case .channel: "删除频道？"
-        case .source: "删除播放线路？"
-        case .group: "删除整个分组？"
-        case .list: "删除导入列表？"
+        case .channel: L10n.text("删除频道？")
+        case .source: L10n.text("删除播放线路？")
+        case .group: L10n.text("删除整个分组？")
+        case .list: L10n.text("删除导入列表？")
         }
     }
     var message: String {
         switch self {
-        case .channel(let channel): "“\(channel.name)”及其全部播放线路将从频道库中删除。"
-        case .source(let channel, let source): "将从“\(channel.name)”删除线路 \(source.host ?? source.absoluteString)。"
-        case .group(let group): "“\(group)”中的全部频道将从所有导入列表中删除。"
-        case .list(let list): "将移除“\(list.name)”贡献的频道和线路；其他列表中重复存在的内容会保留。"
+        case .channel(let channel): L10n.text("“\(channel.name)”及其全部播放线路将从频道库中删除。")
+        case .source(let channel, let source): L10n.text("将从“\(channel.name)”删除线路 \(source.host ?? source.absoluteString)。")
+        case .group(let group): L10n.text("“\(group)”中的全部频道将从所有导入列表中删除。")
+        case .list(let list): L10n.text("将移除“\(list.displayName)”贡献的频道和线路；其他列表中重复存在的内容会保留。")
         }
     }
     func message(in list: ChannelList?) -> String {
         guard let list else { return message }
         switch self {
         case .channel(let channel):
-            return "将从“\(list.name)”移除“\(channel.name)”及其在此来源中的全部线路。其他来源的同名频道会保留。"
+            return L10n.text("将从“\(list.displayName)”移除“\(channel.name)”及其在此来源中的全部线路。其他来源的同名频道会保留。")
         case .source(let channel, let source):
-            return "将从“\(list.name)”的“\(channel.name)”删除线路 \(source.host ?? source.absoluteString)。其他来源的线路会保留。"
+            return L10n.text("将从“\(list.displayName)”的“\(channel.name)”删除线路 \(source.host ?? source.absoluteString)。其他来源的线路会保留。")
         default: return message
         }
     }
@@ -814,11 +817,9 @@ struct ContentView: View {
     @Environment(\.openWindow) private var openWindow
     @ViewState private var guidePreview = ProgramGuidePreview()
     @ViewState private var sidebarWidth: CGFloat
-    private let minimumSidebarWidth: CGFloat = 294
+    @ViewState private var minimumSidebarWidth: CGFloat = 294
+    private static let channelHeaderInset: CGFloat = 12
     private let minimumVideoWidth: CGFloat = 460
-    private let topBarSpacing: CGFloat = 10
-    private let searchWidth: CGFloat = 140
-    private let filterWidth: CGFloat = 120
     private struct SidebarSection: Identifiable {
         let name: String
         let channels: [Channel]
@@ -833,7 +834,7 @@ struct ContentView: View {
 
     init() {
         let savedWidth = UserDefaults.standard.double(forKey: "sidebarWidth")
-        _sidebarWidth = State(initialValue: savedWidth >= 294 ? CGFloat(savedWidth) : 294)
+        _sidebarWidth = State(initialValue: savedWidth > 0 ? CGFloat(savedWidth) : 294)
     }
 
     private func groupHeader(_ group: String) -> some View {
@@ -841,7 +842,7 @@ struct ContentView: View {
             HStack(spacing: 7) {
                 Image(systemName: ui.collapsedGroups.contains(group) ? "chevron.right" : "chevron.down")
                     .font(.system(size: 10, weight: .semibold)).frame(width: 12)
-                Text(group).font(.system(size: 13, weight: .semibold))
+                Text(Channel.groupTitle(group)).font(.system(size: 13, weight: .semibold))
                 Spacer(minLength: 0)
             }
             .foregroundStyle(.secondary)
@@ -850,14 +851,14 @@ struct ContentView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(group)
-        .accessibilityValue(ui.collapsedGroups.contains(group) ? "已折叠" : "已展开")
-        .help(ui.collapsedGroups.contains(group) ? "展开\(group)" : "折叠\(group)")
+        .accessibilityLabel(Channel.groupTitle(group))
+        .accessibilityValue(ui.collapsedGroups.contains(group) ? L10n.text("已折叠") : L10n.text("已展开"))
+        .help(ui.collapsedGroups.contains(group) ? L10n.text("展开\(Channel.groupTitle(group))") : L10n.text("折叠\(Channel.groupTitle(group))"))
         .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
         .listRowBackground(Color.sofaBackground)
         .listRowSeparator(.hidden)
         .contextMenu {
-            Button("删除分组…", role: .destructive) { library.confirmDeletion(.group(group)) }
+            Button(L10n.text("删除分组…"), role: .destructive) { library.confirmDeletion(.group(group)) }
         }
     }
 
@@ -890,13 +891,10 @@ struct ContentView: View {
             let programs = programGuide.search(query, channels: channels, at: date)
             HStack(spacing: 0) {
                 VStack(spacing: 0) {
-                    HStack(spacing: 0) {
-                    ChannelFilterTabs(favoritesOnly: $ui.favoritesOnly)
-                        .frame(width: filterWidth, height: 26)
-                    Spacer(minLength: topBarSpacing)
-                    ChannelSearchField(text: $ui.search).frame(width: searchWidth)
+                    ChannelBrowserHeader(favoritesOnly: $ui.favoritesOnly, search: $ui.search) { width in
+                        minimumSidebarWidth = width + 2 * Self.channelHeaderInset
                     }
-                    .padding(.horizontal, 12).padding(.top, 44).padding(.bottom, 10)
+                    .padding(.horizontal, Self.channelHeaderInset).padding(.top, 44).padding(.bottom, 10)
                     List {
                     ForEach(snapshot.sections) { section in
                         groupHeader(section.name)
@@ -942,11 +940,11 @@ struct ContentView: View {
                     if library.channels.isEmpty {
                         VStack(spacing: 12) {
                             SidebarEmptyView(
-                                library.updatingSourceIDs.isEmpty ? "暂无频道" : "正在获取频道…",
+                                library.updatingSourceIDs.isEmpty ? L10n.text("暂无频道") : L10n.text("正在获取频道…"),
                                 systemImage: "tv",
                                 description: library.sourceUpdateErrors.isEmpty
-                                    ? "请从‘频道’菜单导入频道列表"
-                                    : "更新未成功，请重试或导入自己的列表"
+                                    ? L10n.text("请从‘频道’菜单导入频道列表")
+                                    : L10n.text("更新未成功，请重试或导入自己的列表")
                             )
                             if !library.updatingSourceIDs.isEmpty {
                                 ProgressView().controlSize(.small)
@@ -956,12 +954,12 @@ struct ContentView: View {
                     } else if snapshot.channelCount == 0 && programs.isEmpty {
                         if ui.favoritesOnly {
                             SidebarEmptyView(
-                                query.isEmpty ? "暂无收藏频道" : "收藏中没有匹配的频道或节目",
+                                query.isEmpty ? L10n.text("暂无收藏频道") : L10n.text("收藏中没有匹配的频道或节目"),
                                 systemImage: "star",
-                                description: query.isEmpty ? "点击频道右侧的星标添加收藏" : "试试其他搜索词"
+                                description: query.isEmpty ? L10n.text("点击频道右侧的星标添加收藏") : L10n.text("试试其他搜索词")
                             )
                         } else {
-                            SidebarEmptyView("没有匹配的频道或节目", systemImage: "magnifyingglass")
+                            SidebarEmptyView(L10n.text("没有匹配的频道或节目"), systemImage: "magnifyingglass")
                         }
                     }
                     }
@@ -971,7 +969,7 @@ struct ContentView: View {
                     HStack {
                     AppLogoView()
                     Spacer(minLength: 6)
-                    Text(query.isEmpty ? "\(snapshot.channelCount) 个频道" : "\(snapshot.channelCount) 个频道 · \(programs.count) 档节目")
+                    Text(query.isEmpty ? L10n.text("\(snapshot.channelCount) 个频道") : L10n.text("\(snapshot.channelCount) 个频道 · \(programs.count) 档节目"))
                         .fixedSize()
                     }
                     .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 12).padding(.vertical, 8)
@@ -1026,7 +1024,7 @@ struct ContentView: View {
                 .accessibilityHidden(true)
         }
         .ignoresSafeArea(.container, edges: .top)
-        .background(MainWindowChrome(title: library.selected?.displayName ?? "沙发电视", onClose: { library.stopPlayback(restoreWindow: false) }).frame(width: 0, height: 0))
+        .background(MainWindowChrome(title: library.selected?.displayName ?? L10n.text("沙发电视"), onClose: { library.stopPlayback(restoreWindow: false) }).frame(width: 0, height: 0))
         .focusedSceneValue(\.channelLibrary, library)
         .onAppear {
             ProgramReminderStore.shared.onActivate = {
@@ -1050,26 +1048,24 @@ struct ContentView: View {
         }
         .overlay {
             if library.loading {
-                ProgressView("正在加载频道…").padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                ProgressView(L10n.text("正在加载频道…")).padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
             }
         }
     }
 }
 @main struct SofaTVApp: App {
     @NSApplicationDelegateAdaptor(SofaTVAppDelegate.self) private var appDelegate
-    init() {
-        // Scope the language preference to this app, including native menus and panels.
-        UserDefaults.standard.set(["zh-Hans"], forKey: "AppleLanguages")
-    }
+    @AppStorage(AppLanguage.defaultsKey) private var language: AppLanguage = .system
+    init() { L10n.configureAtLaunch() }
     var body: some Scene {
-        WindowGroup("沙发电视", id: "sofatv-main") {
+        let displayLanguage = language.resolved
+        WindowGroup(L10n.text("沙发电视", language: displayLanguage), id: "sofatv-main") {
             ContentView().frame(minWidth: 900, minHeight: 560)
-                .environment(\.locale, Locale(identifier: "zh_Hans_CN"))
-                .preferredColorScheme(.dark)
+                .appLocale()
         }
             // New installs use this size; MainWindowChrome restores each user's saved frame.
             .defaultSize(width: 1050, height: 589)
             .windowStyle(.hiddenTitleBar)
-            .commands { SofaTVCommands() }
+            .commands { SofaTVCommands(language: displayLanguage) }
     }
 }

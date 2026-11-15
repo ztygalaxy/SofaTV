@@ -113,8 +113,8 @@ struct PlaybackRecoveryPolicy {
 @MainActor final class PlaybackRecoveryMonitor: NSObject {
     var samplePosition: (@MainActor () async -> Double?)?
     var onRestart: ((Int, String) -> Void)?
-    var onStatus: ((String) -> Void)?
-    var onExhausted: ((String) -> Void)?
+    var onStatus: ((String.LocalizationValue) -> Void)?
+    var onExhausted: ((String.LocalizationValue) -> Void)?
     private(set) var policy: PlaybackRecoveryPolicy
     private var generation = UUID()
     private var pollTask: Task<Void, Never>?
@@ -169,16 +169,16 @@ struct PlaybackRecoveryPolicy {
     }
     func failed(_ message: String) { handle(policy.failure(), reason: message) }
     func check(position: Double?) {
-        handle(policy.sample(position: position, at: now()), reason: "播放长时间没有进度")
+        handle(policy.sample(position: position, at: now()), reason: L10n.text("播放长时间没有进度"))
     }
     func networkChanged(available: Bool) {
-        handle(policy.networkChanged(available: available, at: now()), reason: "网络已恢复")
+        handle(policy.networkChanged(available: available, at: now()), reason: L10n.text("网络已恢复"))
     }
     func suspend() {
         generation = UUID(); retryTask?.cancel(); retryTask = nil
         policy.suspend()
     }
-    func resume() { handle(policy.resume(at: now()), reason: "电脑已唤醒，重新连接直播") }
+    func resume() { handle(policy.resume(at: now()), reason: L10n.text("电脑已唤醒，重新连接直播")) }
     private func startPolling() {
         guard pollsAutomatically else { return }
         pollTask = Task { [weak self] in

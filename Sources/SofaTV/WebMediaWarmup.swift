@@ -1,8 +1,9 @@
 import SwiftUI
+import Foundation
 
 @MainActor protocol WebMediaWarmupResolving: AnyObject {
     var warmupView: NSView { get }
-    func resolve(_ url: URL, completion: @escaping (ResolvedWebMedia) -> Void, failure: @escaping (String) -> Void)
+    func resolve(_ url: URL, completion: @escaping (ResolvedWebMedia) -> Void, failure: @escaping (String.LocalizationValue) -> Void)
     func cancel()
 }
 

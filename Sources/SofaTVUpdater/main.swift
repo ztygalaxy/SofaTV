@@ -1,6 +1,12 @@
 import AppKit
 import UpdateSupport
 
+private let usesEnglish = ProcessInfo.processInfo.environment["SOFATV_UPDATE_LANGUAGE"] == "en"
+
+private func installationMessage(for error: Error) -> String {
+    (error as? UpdateInstallationError)?.message(inEnglish: usesEnglish) ?? error.localizedDescription
+}
+
 // The opaque OS token is transferred once; file operations remain on MainActor.
 private struct ReplacementAuthorization: @unchecked Sendable {
     let value: NSWorkspace.Authorization
@@ -75,9 +81,9 @@ final class Installer {
     private func showError(_ error: Error) {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
-        alert.messageText = "安装更新失败"
-        alert.informativeText = error.localizedDescription
-        alert.addButton(withTitle: "好")
+        alert.messageText = usesEnglish ? "Could Not Install the Update" : "安装更新失败"
+        alert.informativeText = installationMessage(for: error)
+        alert.addButton(withTitle: usesEnglish ? "OK" : "好")
         alert.runModal()
     }
 }
@@ -91,7 +97,7 @@ Task { @MainActor in
         installer = try Installer(requestURL: URL(fileURLWithPath: CommandLine.arguments[1]))
         try await installer?.start()
     } catch {
-        FileHandle.standardOutput.write(Data("ERROR:\(error.localizedDescription)\n".utf8))
+        FileHandle.standardOutput.write(Data("ERROR:\(installationMessage(for: error))\n".utf8))
         exit(1)
     }
 }

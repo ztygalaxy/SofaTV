@@ -20,7 +20,7 @@ struct ProgramGuide: Codable, Sendable {
                 let time = calendar.dateComponents([.hour, .minute], from: date)
                 return String(format: "%02d:%02d", time.hour!, time.minute!)
             }
-            let nextDay = calendar.isDate(start, inSameDayAs: end) ? "" : "次日"
+            let nextDay = calendar.isDate(start, inSameDayAs: end) ? "" : L10n.text("次日")
             return "\(clock(start))–\(nextDay)\(clock(end))"
         }
         func subtitle(timeZone: TimeZone = .current) -> String { "\(timeRange(timeZone: timeZone)) \(title)" }
@@ -34,10 +34,10 @@ struct ProgramGuide: Codable, Sendable {
             let isUpcoming: Bool
 
             func badge(isPlayingChannel: Bool) -> String {
-                isUpcoming ? "即将播出" : (isPlayingChannel ? "当前节目" : "正在播出")
+                isUpcoming ? L10n.text("即将播出") : (isPlayingChannel ? L10n.text("当前节目") : L10n.text("正在播出"))
             }
             func subtitle(timeZone: TimeZone = .current) -> String {
-                (isUpcoming ? "即将播出 · " : "") + program.subtitle(timeZone: timeZone)
+                (isUpcoming ? L10n.text("即将播出 · ") : "") + program.subtitle(timeZone: timeZone)
             }
         }
 
@@ -73,8 +73,8 @@ struct ProgramGuide: Codable, Sendable {
         case invalidXML, emptyGuide
         var errorDescription: String? {
             switch self {
-            case .invalidXML: "节目单不是有效的 XMLTV 文件。"
-            case .emptyGuide: "节目单中没有有效节目。"
+            case .invalidXML: L10n.text("节目单不是有效的 XMLTV 文件。")
+            case .emptyGuide: L10n.text("节目单中没有有效节目。")
             }
         }
     }

@@ -10,19 +10,19 @@ extension Library {
     }
     func exportChannelConfiguration() {
         let panel = NSSavePanel()
-        panel.title = "导出频道配置"; panel.allowedContentTypes = [.json]
-        panel.nameFieldStringValue = "沙发电视频道配置.json"
+        panel.title = L10n.text("导出频道配置"); panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = L10n.text("沙发电视频道配置.json")
         panel.begin { [weak self] response in
             guard response == .OK, let self, let url = panel.url else { return }
             let access = url.startAccessingSecurityScopedResource()
             defer { if access { url.stopAccessingSecurityScopedResource() } }
             do { try self.configurationBackupData().write(to: url, options: .atomic) }
-            catch { AppWindows.shared.showMessage("导出未成功", detail: error.localizedDescription) }
+            catch { AppWindows.shared.showMessage(L10n.text("导出未成功"), detail: error.localizedDescription) }
         }
     }
     func importChannelConfiguration() {
         let panel = NSOpenPanel()
-        panel.title = "导入频道配置"; panel.allowedContentTypes = [.json]
+        panel.title = L10n.text("导入频道配置"); panel.allowedContentTypes = [.json]
         panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
         panel.begin { [weak self] response in
             guard response == .OK, let self, let url = panel.url else { return }
@@ -34,16 +34,16 @@ extension Library {
                 let data = try Data(contentsOf: url)
                 _ = try ChannelConfigurationBackup.decode(data)
                 let alert = NSAlert()
-                alert.messageText = "恢复频道配置？"
-                alert.informativeText = "将替换当前频道来源、收藏、名称、分组和顺序，并停止当前播放。"
-                alert.addButton(withTitle: "恢复").hasDestructiveAction = true
-                alert.addButton(withTitle: "取消").keyEquivalent = "\u{1b}"
+                alert.messageText = L10n.text("恢复频道配置？")
+                alert.informativeText = L10n.text("将替换当前频道来源、收藏、名称、分组和顺序，并停止当前播放。")
+                alert.addButton(withTitle: L10n.text("恢复")).hasDestructiveAction = true
+                alert.addButton(withTitle: L10n.text("取消")).keyEquivalent = "\u{1b}"
                 AppWindows.shared.present(alert) { [weak self] result in
                     guard result == .alertFirstButtonReturn else { return }
                     do { try self?.restoreConfiguration(data) }
-                    catch { AppWindows.shared.showMessage("恢复未成功", detail: error.localizedDescription) }
+                    catch { AppWindows.shared.showMessage(L10n.text("恢复未成功"), detail: error.localizedDescription) }
                 }
-            } catch { AppWindows.shared.showMessage("无法导入配置", detail: error.localizedDescription) }
+            } catch { AppWindows.shared.showMessage(L10n.text("无法导入配置"), detail: error.localizedDescription) }
         }
     }
 }
@@ -66,22 +66,22 @@ struct ChannelOrganizer: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Picker("整理内容", selection: $mode) { Text("频道").tag(0); Text("分组").tag(1) }
+                Picker(L10n.text("整理内容"), selection: $mode) { Text(L10n.text("频道")).tag(0); Text(L10n.text("分组")).tag(1) }
                     .pickerStyle(.segmented).frame(width: 160)
                 Spacer()
-                TextField("搜索频道或分组", text: $search).textFieldStyle(.roundedBorder).frame(width: 230)
+                TextField(L10n.text("搜索频道或分组"), text: $search).textFieldStyle(.roundedBorder).frame(width: 230)
             }
-            Text("拖动调整顺序；输入新分组名以创建新分组。")
+            Text(L10n.text("拖动调整顺序；输入新分组名以创建新分组。"))
                 .font(.caption).foregroundStyle(.secondary)
             if mode == 0 { channelList } else { groupList }
             HStack {
-                Button("导入配置…") { library.importChannelConfiguration() }
-                Button("导出配置…") { library.exportChannelConfiguration() }
+                Button(L10n.text("导入配置…")) { library.importChannelConfiguration() }
+                Button(L10n.text("导出配置…")) { library.exportChannelConfiguration() }
                     .disabled(library.channelLists.isEmpty)
-                Button("恢复默认顺序") { library.resetChannelOrder() }
+                Button(L10n.text("恢复默认顺序")) { library.resetChannelOrder() }
                     .disabled(library.personalization.order.isEmpty && library.personalization.groupOrder.isEmpty)
                 Spacer()
-                Button("完成", action: onClose).keyboardShortcut(.defaultAction)
+                Button(L10n.text("完成"), action: onClose).keyboardShortcut(.defaultAction)
             }
         }
         .padding(20).background(Color.sofaBackground)
@@ -107,19 +107,19 @@ struct ChannelOrganizer: View {
                     ChannelLogoView(channelName: channel.name, isSelected: false, contentScale: 0.7)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(channel.displayName).lineLimit(1)
-                        Text(channel.displayGroup).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        Text(Channel.groupTitle(channel.displayGroup)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     }
-                    .help("来源名称：" + channel.name)
+                    .help(L10n.text("来源名称：") + channel.name)
                     Spacer()
                     Button { library.favorite(channel) } label: {
                         Image(systemName: library.favorites.contains(channel.id) ? "star.fill" : "star")
                             .foregroundStyle(library.favorites.contains(channel.id) ? Color.sofaAccent : .secondary)
-                    }.help("收藏频道")
-                    Button { editing = .channel(channel) } label: { Image(systemName: "pencil") }.help("编辑名称与分组")
+                    }.help(L10n.text("收藏频道"))
+                    Button { editing = .channel(channel) } label: { Image(systemName: "pencil") }.help(L10n.text("编辑名称与分组"))
                     Button { library.moveChannel(channel, by: -1) } label: { Image(systemName: "chevron.up") }
-                        .disabled(!query.isEmpty || library.channels.first?.identity == channel.identity).help("上移")
+                        .disabled(!query.isEmpty || library.channels.first?.identity == channel.identity).help(L10n.text("上移"))
                     Button { library.moveChannel(channel, by: 1) } label: { Image(systemName: "chevron.down") }
-                        .disabled(!query.isEmpty || library.channels.last?.identity == channel.identity).help("下移")
+                        .disabled(!query.isEmpty || library.channels.last?.identity == channel.identity).help(L10n.text("下移"))
                 }
                 .buttonStyle(.borderless).padding(.vertical, 5)
                 .moveDisabled(!query.isEmpty)
@@ -132,7 +132,7 @@ struct ChannelOrganizer: View {
         .listStyle(.plain).scrollContentBackground(.hidden)
         .appScrollStyle()
         .overlay {
-            if library.channels.isEmpty { SidebarEmptyView("暂无频道", systemImage: "tv", description: "请从‘频道’菜单导入频道列表") }
+            if library.channels.isEmpty { SidebarEmptyView(L10n.text("暂无频道"), systemImage: "tv", description: L10n.text("请从‘频道’菜单导入频道列表")) }
         }
     }
 
@@ -141,15 +141,15 @@ struct ChannelOrganizer: View {
             ForEach(library.orderedGroups.filter { query.isEmpty || $0.localizedCaseInsensitiveContains(query) }, id: \.self) { group in
                 HStack {
                     Image(systemName: "folder").foregroundStyle(.secondary)
-                    Text(group)
+                    Text(Channel.groupTitle(group))
                     Spacer()
-                    Text("\(library.channels.filter { $0.displayGroup == group }.count) 个频道")
+                    Text(L10n.text("\(library.channels.filter { $0.displayGroup == group }.count) 个频道"))
                         .font(.caption).foregroundStyle(.secondary)
-                    Button { editing = .group(group) } label: { Image(systemName: "pencil") }.help("重命名分组")
+                    Button { editing = .group(group) } label: { Image(systemName: "pencil") }.help(L10n.text("重命名分组"))
                     Button { library.moveGroup(group, by: -1) } label: { Image(systemName: "chevron.up") }
-                        .disabled(!query.isEmpty || library.orderedGroups.first == group).help("上移")
+                        .disabled(!query.isEmpty || library.orderedGroups.first == group).help(L10n.text("上移"))
                     Button { library.moveGroup(group, by: 1) } label: { Image(systemName: "chevron.down") }
-                        .disabled(!query.isEmpty || library.orderedGroups.last == group).help("下移")
+                        .disabled(!query.isEmpty || library.orderedGroups.last == group).help(L10n.text("下移"))
                 }
                 .buttonStyle(.borderless).padding(.vertical, 7)
                 .moveDisabled(!query.isEmpty)
@@ -178,20 +178,24 @@ private struct ChannelNameEditor: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("编辑频道").font(.headline)
-            Text("频道名称").font(.caption).foregroundStyle(.secondary)
-            TextField("频道名称", text: $name).textFieldStyle(.roundedBorder)
-            Text("分组名称").font(.caption).foregroundStyle(.secondary)
+            Text(L10n.text("编辑频道")).font(.headline)
+            Text(L10n.text("频道名称")).font(.caption).foregroundStyle(.secondary)
+            TextField(L10n.text("频道名称"), text: $name).textFieldStyle(.roundedBorder)
+            Text(L10n.text("分组名称")).font(.caption).foregroundStyle(.secondary)
             HStack {
-                TextField("输入新分组或选择已有分组", text: $group).textFieldStyle(.roundedBorder)
-                Menu("选择已有分组") { ForEach(groups, id: \.self) { value in Button(value) { group = value } } }
+                TextField(L10n.text("输入新分组或选择已有分组"), text: $group).textFieldStyle(.roundedBorder)
+                Menu(L10n.text("选择已有分组")) {
+                    ForEach(groups, id: \.self) { value in
+                        Button(Channel.groupTitle(value)) { group = value }
+                    }
+                }
                     .frame(width: 130)
             }
             HStack {
-                Button("恢复原名称与分组") { name = channel.name; group = channel.group }
+                Button(L10n.text("恢复原名称与分组")) { name = channel.name; group = channel.group }
                 Spacer()
-                Button("取消", action: onCancel).keyboardShortcut(.cancelAction)
-                Button("保存") { onSave(name, group) }.keyboardShortcut(.defaultAction)
+                Button(L10n.text("取消"), action: onCancel).keyboardShortcut(.cancelAction)
+                Button(L10n.text("保存")) { onSave(name, group) }.keyboardShortcut(.defaultAction)
             }
             .padding(.top, 6)
         }
@@ -208,14 +212,14 @@ private struct GroupNameEditor: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("重命名分组").font(.headline)
-            TextField("分组名称", text: $name).textFieldStyle(.roundedBorder)
-            Text("使用已有分组名称时，会将这些频道合并到该分组。")
+            Text(L10n.text("重命名分组")).font(.headline)
+            TextField(L10n.text("分组名称"), text: $name).textFieldStyle(.roundedBorder)
+            Text(L10n.text("使用已有分组名称时，会将这些频道合并到该分组。"))
                 .font(.caption).foregroundStyle(.secondary)
             HStack {
                 Spacer()
-                Button("取消", action: onCancel).keyboardShortcut(.cancelAction)
-                Button("保存") { onSave(name) }.keyboardShortcut(.defaultAction)
+                Button(L10n.text("取消"), action: onCancel).keyboardShortcut(.cancelAction)
+                Button(L10n.text("保存")) { onSave(name) }.keyboardShortcut(.defaultAction)
                     .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }

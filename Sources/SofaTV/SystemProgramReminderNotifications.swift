@@ -55,7 +55,7 @@ import Foundation
         let content = UNMutableNotificationContent()
         content.title = reminder.title
         content.subtitle = reminder.channelName
-        content.body = "您预约的\(reminder.channelName)的《\(reminder.title)》即将开播，点击跳转观看。"
+        content.body = L10n.text("您预约的\(reminder.channelName)的《\(reminder.title)》即将开播，点击跳转观看。")
         content.sound = .default
         content.categoryIdentifier = Self.category
         content.userInfo = ["signature": reminder.signature]
