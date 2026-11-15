@@ -77,4 +77,38 @@ struct ProgramGuidePresentationTests {
         #expect(store.titles[second.id]?.hasSuffix("频道二下一档") == true)
         #expect(store.titles[second.id]?.hasPrefix("即将播出") == false)
     }
+
+    @Test func programSearchFindsCurrentAndFutureShowsAcrossChannels() async throws {
+        let now = date("2026-11-08T02:00:00Z")
+        let first = Channel(name: "频道一", group: "测试", url: URL(string: "https://example.invalid/shared")!, epgID: "one")
+        let second = Channel(name: "频道二", group: "测试", url: first.url, epgID: "two")
+        let guide = try ProgramGuide.parse(Data("""
+        <tv>
+        <programme channel="one" start="20261108090000 +0800" stop="20261108093000 +0800"><title>NEWS 已播</title></programme>
+        <programme channel="two" start="20261108093000 +0800" stop="20261108102000 +0800"><title>NEWS 正在播</title></programme>
+        <programme channel="one" start="20261108102000 +0800" stop="20261108103000 +0800"><title>NEWS 稍后</title></programme>
+        <programme channel="two" start="20261108110000 +0800" stop="20261108113000 +0800"><title>NEWS 重播</title></programme>
+        <programme channel="two" start="20261109100000 +0800" stop="20261109103000 +0800"><title>NEWS 明天</title></programme>
+        </tv>
+        """.utf8))
+        let entry = ProgramGuideCacheEntry(fetchedAt: now, guide: guide)
+        let store = ProgramGuideStore(now: { now }, cachedGuide: { entry }, refreshGuide: { entry }, observeSystemEvents: false)
+        defer { store.stop() }
+        store.setChannels([first, second])
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while store.nextRefreshAt == nil {
+            guard ContinuousClock.now < deadline else { throw URLError(.timedOut) }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+
+        let results = store.search(" news ", channels: [second, first], at: now)
+        #expect(results.live.map(\.channel.id) == [second.id])
+        #expect(results.upcoming.map(\.program.title) == ["NEWS 稍后", "NEWS 重播", "NEWS 明天"])
+        #expect(store.search("NEWS", channels: [first], at: now).count == 1)
+        #expect(store.search(" ", channels: [first, second], at: now).isEmpty)
+
+        let atChange = store.search("NEWS", channels: [first, second], at: date("2026-11-08T02:20:00Z"))
+        #expect(atChange.live.map(\.program.title) == ["NEWS 稍后"])
+        #expect(atChange.count == 3)
+    }
 }

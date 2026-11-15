@@ -32,12 +32,13 @@
 </p>
 <table>
   <tr>
-    <td width="16.66%" align="center"><a href="docs/images/app-idle.png"><img src="docs/images/app-idle.png" width="160" alt="沙发电视启动页面"></a></td>
-    <td width="16.66%" align="center"><a href="docs/images/app-playing.png"><img src="docs/images/app-playing.png" width="160" alt="沙发电视窗口播放与节目单"></a></td>
-    <td width="16.66%" align="center"><a href="docs/images/app-fullscreen.jpg"><img src="docs/images/app-fullscreen.jpg" width="160" alt="沙发电视全屏播放与节目单"></a></td>
-    <td width="16.66%" align="center"><a href="docs/images/app-mini-player.png"><img src="docs/images/app-mini-player.png" width="160" alt="沙发电视桌面小窗模式"></a></td>
-    <td width="16.66%" align="center"><a href="docs/images/app-channel-manager.png"><img src="docs/images/app-channel-manager.png" width="160" alt="编辑频道来源页面"></a></td>
-    <td width="16.66%" align="center"><a href="docs/images/app-program-reservations.png"><img src="docs/images/app-program-reservations.png" width="160" alt="节目单中预约节目并显示预约成功提示"></a></td>
+    <td width="14.28%" align="center"><a href="docs/images/app-idle.png"><img src="docs/images/app-idle.png" width="160" alt="沙发电视启动页面"></a></td>
+    <td width="14.28%" align="center"><a href="docs/images/app-playing.png"><img src="docs/images/app-playing.png" width="160" alt="沙发电视窗口播放与节目单"></a></td>
+    <td width="14.28%" align="center"><a href="docs/images/app-fullscreen.jpg"><img src="docs/images/app-fullscreen.jpg" width="160" alt="沙发电视全屏播放与节目单"></a></td>
+    <td width="14.28%" align="center"><a href="docs/images/app-mini-player.png"><img src="docs/images/app-mini-player.png" width="160" alt="沙发电视桌面小窗模式"></a></td>
+    <td width="14.28%" align="center"><a href="docs/images/app-channel-manager.png"><img src="docs/images/app-channel-manager.png" width="160" alt="编辑频道来源页面"></a></td>
+    <td width="14.28%" align="center"><a href="docs/images/app-program-reservations.png"><img src="docs/images/app-program-reservations.png" width="160" alt="节目单中预约节目并显示预约成功提示"></a></td>
+    <td width="14.28%" align="center"><a href="docs/images/app-program-search.png"><img src="docs/images/app-program-search.png" width="96" alt="搜索「欢乐」后显示正在播出和即将播出的节目"></a></td>
   </tr>
   <tr>
     <td align="center"><strong>频道列表</strong><br><sub>搜索、收藏，选择想看的频道</sub></td>
@@ -46,6 +47,7 @@
     <td align="center"><strong>桌面小窗模式</strong><br><sub>置顶播放，自由拖动与缩放</sub></td>
     <td align="center"><strong>编辑频道来源</strong><br><sub>搜索频道，管理频道与播放线路</sub></td>
     <td align="center"><strong>节目预约和管理</strong><br><sub>铃铛预约节目，统一查看与取消</sub></td>
+    <td align="center"><strong>节目搜索</strong><br><sub>跨频道搜节目，查看播出时间</sub></td>
   </tr>
 </table>
 
@@ -66,6 +68,7 @@
 | --- | --- |
 | 原生播放 | 支持清晰度选择、直播延迟模式和画面拉伸，提供网页来源的解析与播放支持。 |
 | 节目单预览 | 悬停浏览当天节目单，自动定位当前时段；查看其他频道的排期时，直播继续播放。 |
+| 节目搜索 | 输入节目名，查看各频道的播出时间。正在播出的节目可直接切台，未开播的节目可点铃铛预约。 |
 | 节目预约 | 点击节目旁的铃铛，在开播前 10 秒收到系统通知；点击通知切台。 |
 | 全屏选台 | 从画面左侧唤出频道列表，搜索、收藏、预览节目单或换台。 |
 | 置顶小窗 | 一键切换桌面小窗，自由移动、按比例缩放，随时返回主窗口。 |
@@ -98,7 +101,9 @@
 
 ### 频道与节目单
 
-搜索框支持频道名和分组名，左上角可切换“频道 / 收藏”。拖动列表与视频之间的分隔线可调整宽度，点击视频左侧的箭头可收起或展开列表。
+用「搜索频道或节目」查找频道、分组和节目名称。点击正在播出的节目可切台，未开播的节目可用铃铛预约。切到「收藏」后，搜索范围限于收藏频道。
+
+拖动列表与视频之间的分隔线可调整宽度，点击视频左侧的箭头可收起或展开列表。
 
 正在播放的频道带有青色竖条。有专属台标时，Dock 图标右上角也会显示该台标；使用默认电视图标的频道则保留应用原图标。
 

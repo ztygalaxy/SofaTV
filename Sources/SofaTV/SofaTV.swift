@@ -792,6 +792,7 @@ enum LibraryDeletion {
 }
 @MainActor final class UIState: ObservableObject {
     @Published var search = ""
+    var searchQuery: String { search.trimmingCharacters(in: .whitespacesAndNewlines) }
     @Published var sidebarCollapsed = false
     @Published var favoritesOnly = UserDefaults.standard.bool(forKey: "favoritesOnly") {
         didSet { UserDefaults.standard.set(favoritesOnly, forKey: "favoritesOnly") }
@@ -801,6 +802,9 @@ enum LibraryDeletion {
     }
     func toggleGroup(_ group: String) {
         if !collapsedGroups.insert(group).inserted { collapsedGroups.remove(group) }
+    }
+    func visibleChannels(in library: Library) -> [Channel] {
+        favoritesOnly ? library.channels.filter { library.favorites.contains($0.id) } : library.channels
     }
 }
 struct ContentView: View {
@@ -813,8 +817,8 @@ struct ContentView: View {
     private let minimumSidebarWidth: CGFloat = 294
     private let minimumVideoWidth: CGFloat = 460
     private let topBarSpacing: CGFloat = 10
-    private let searchWidth: CGFloat = 72 * 1.2 * 1.5
-    private let filterWidth: CGFloat = 129.6
+    private let searchWidth: CGFloat = 140
+    private let filterWidth: CGFloat = 120
     private struct SidebarSection: Identifiable {
         let name: String
         let channels: [Channel]
@@ -860,12 +864,10 @@ struct ContentView: View {
     /// Build the visible list once per view refresh. The old view filtered all
     /// channels again for every group, which becomes especially expensive for
     /// large imported catalogues.
-    private func sidebarSnapshot() -> SidebarSnapshot {
+    private func sidebarSnapshot(channels: [Channel], query: String) -> SidebarSnapshot {
         var channelsByGroup: [String: [Channel]] = [:]
         var channelCount = 0
-        for channel in library.channels {
-            guard (!ui.favoritesOnly || library.favorites.contains(channel.id)),
-                  channel.matches(ui.search) else { continue }
+        for channel in channels where channel.matches(query) {
             channelCount += 1
             channelsByGroup[channel.displayGroup, default: []].append(channel)
         }
@@ -881,25 +883,18 @@ struct ContentView: View {
             let maximumSidebarWidth = max(minimumSidebarWidth, geometry.size.width - minimumVideoWidth - SidebarResizeHandle.dividerWidth)
             let visibleSidebarWidth = min(max(sidebarWidth, minimumSidebarWidth), maximumSidebarWidth)
             let sidebarHidden = ui.sidebarCollapsed && library.selected != nil
-            let snapshot = sidebarSnapshot()
+            let query = ui.searchQuery
+            let channels = ui.visibleChannels(in: library)
+            let date = programGuide.currentDate
+            let snapshot = sidebarSnapshot(channels: channels, query: query)
+            let programs = programGuide.search(query, channels: channels, at: date)
             HStack(spacing: 0) {
                 VStack(spacing: 0) {
                     HStack(spacing: 0) {
                     ChannelFilterTabs(favoritesOnly: $ui.favoritesOnly)
                         .frame(width: filterWidth, height: 26)
                     Spacer(minLength: topBarSpacing)
-                    HStack(spacing: 5) {
-                        Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                        TextField("搜索", text: $ui.search)
-                            .textFieldStyle(.plain).accessibilityLabel("搜索频道或分组")
-                        if !ui.search.isEmpty {
-                            Button { ui.search = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
-                                .buttonStyle(.plain).help("清除搜索")
-                        }
-                    }
-                    .padding(.horizontal, 8).frame(height: 26)
-                    .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
-                    .frame(width: searchWidth)
+                    ChannelSearchField(text: $ui.search).frame(width: searchWidth)
                     }
                     .padding(.horizontal, 12).padding(.top, 44).padding(.bottom, 10)
                     List {
@@ -927,13 +922,21 @@ struct ContentView: View {
                             }
                         }
                     }
+                    ProgramSearchRows(results: programs, date: date, reminders: programGuide.reminders,
+                                      rowBackground: .sofaBackground) { match in
+                        if match.program.contains(programGuide.currentDate) {
+                            guidePreview.dismiss()
+                            library.play(match.channel)
+                        }
+                    }
                     }
                     .listStyle(.plain)
                     .contentMargins(.horizontal, 0, for: .scrollContent)
                     .scrollContentBackground(.hidden)
                     .background(Color.sofaBackground)
                     .background {
-                        ChannelListScrollStyle(groups: snapshot.pinnedGroups, makeHeader: { AnyView(groupHeader($0)) })
+                        ChannelListScrollStyle(groups: programs.isEmpty ? snapshot.pinnedGroups : [],
+                                               makeHeader: { AnyView(groupHeader($0)) })
                     }
                     .overlay {
                     if library.channels.isEmpty {
@@ -950,15 +953,15 @@ struct ContentView: View {
                             }
                         }
                         .padding(.bottom, 20)
-                    } else if snapshot.channelCount == 0 {
+                    } else if snapshot.channelCount == 0 && programs.isEmpty {
                         if ui.favoritesOnly {
                             SidebarEmptyView(
-                                ui.search.isEmpty ? "暂无收藏频道" : "收藏中没有匹配的频道",
+                                query.isEmpty ? "暂无收藏频道" : "收藏中没有匹配的频道或节目",
                                 systemImage: "star",
-                                description: ui.search.isEmpty ? "点击频道右侧的星标添加收藏" : "试试其他搜索词"
+                                description: query.isEmpty ? "点击频道右侧的星标添加收藏" : "试试其他搜索词"
                             )
                         } else {
-                            SidebarEmptyView("没有匹配的频道", systemImage: "magnifyingglass")
+                            SidebarEmptyView("没有匹配的频道或节目", systemImage: "magnifyingglass")
                         }
                     }
                     }
@@ -968,7 +971,8 @@ struct ContentView: View {
                     HStack {
                     AppLogoView()
                     Spacer(minLength: 6)
-                    Text("\(snapshot.channelCount) 个频道").fixedSize()
+                    Text(query.isEmpty ? "\(snapshot.channelCount) 个频道" : "\(snapshot.channelCount) 个频道 · \(programs.count) 档节目")
+                        .fixedSize()
                     }
                     .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 12).padding(.vertical, 8)
                 }

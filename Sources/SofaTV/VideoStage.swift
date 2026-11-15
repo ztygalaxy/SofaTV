@@ -753,12 +753,10 @@ private struct FullscreenChannelPicker: View {
         var id: String { name }
     }
 
-    private func sections() -> (channels: Int, values: [Section]) {
+    private func sections(channels: [Channel], query: String) -> (channels: Int, values: [Section]) {
         var channelsByGroup: [String: [Channel]] = [:]
         var channelCount = 0
-        for channel in library.channels {
-            guard (!ui.favoritesOnly || library.favorites.contains(channel.id)),
-                  channel.matches(ui.search) else { continue }
+        for channel in channels where channel.matches(query) {
             channelCount += 1
             channelsByGroup[channel.displayGroup, default: []].append(channel)
         }
@@ -787,26 +785,19 @@ private struct FullscreenChannelPicker: View {
     }
 
     var body: some View {
-        let snapshot = sections()
+        let query = ui.searchQuery
+        let channels = ui.visibleChannels(in: library)
+        let date = programGuide.currentDate
+        let snapshot = sections(channels: channels, query: query)
+        let programs = programGuide.search(query, channels: channels, at: date)
         let pinnedGroups = snapshot.values.map {
             ChannelListGroup(name: $0.name, visibleChannelCount: ui.collapsedGroups.contains($0.name) ? 0 : $0.channels.count)
         }
         VStack(spacing: 0) {
             HStack(spacing: 10 * contentScale) {
                 ChannelFilterTabs(favoritesOnly: $ui.favoritesOnly, contentScale: contentScale)
-                    .frame(width: 130 * contentScale, height: 26 * contentScale)
-                HStack(spacing: 5 * contentScale) {
-                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                    TextField("搜索", text: $ui.search)
-                        .textFieldStyle(.plain).accessibilityLabel("搜索频道或分组")
-                    if !ui.search.isEmpty {
-                        Button { ui.search = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
-                            .buttonStyle(.plain).help("清除搜索")
-                    }
-                }
-                .font(.system(size: 13 * contentScale))
-                .padding(.horizontal, 8 * contentScale).frame(height: 26 * contentScale)
-                .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 6 * contentScale))
+                    .frame(width: 72 * contentScale, height: 26 * contentScale)
+                ChannelSearchField(text: $ui.search, scale: contentScale)
             }
             .padding(.horizontal, 14 * contentScale).padding(.top, 18 * contentScale).padding(.bottom, 10 * contentScale)
 
@@ -837,6 +828,13 @@ private struct FullscreenChannelPicker: View {
                         }
                     }
                 }
+                ProgramSearchRows(results: programs, date: date, reminders: programGuide.reminders,
+                                  rowBackground: .clear, scale: contentScale) { match in
+                    if match.program.contains(programGuide.currentDate) {
+                        guidePreview.dismiss()
+                        library.play(match.channel)
+                    }
+                }
             }
             .listStyle(.plain)
             .contentMargins(.horizontal, 0, for: .scrollContent)
@@ -844,7 +842,7 @@ private struct FullscreenChannelPicker: View {
             .background(Color.clear)
             .background {
                 ChannelListScrollStyle(
-                    groups: pinnedGroups,
+                    groups: programs.isEmpty ? pinnedGroups : [],
                     makeHeader: { AnyView(groupHeader($0)) },
                     pinnedHeaderBackground: .clear,
                     clipsContentBehindHeader: true
@@ -853,8 +851,12 @@ private struct FullscreenChannelPicker: View {
             .overlay {
                 if library.channels.isEmpty {
                     SidebarEmptyView("暂无频道", systemImage: "tv")
-                } else if snapshot.channels == 0 {
-                    SidebarEmptyView(ui.favoritesOnly ? "暂无收藏频道" : "没有匹配的频道", systemImage: ui.favoritesOnly ? "star" : "magnifyingglass")
+                } else if snapshot.channels == 0 && programs.isEmpty {
+                    if ui.favoritesOnly {
+                        SidebarEmptyView(query.isEmpty ? "暂无收藏频道" : "收藏中没有匹配的频道或节目", systemImage: "star")
+                    } else {
+                        SidebarEmptyView("没有匹配的频道或节目", systemImage: "magnifyingglass")
+                    }
                 }
             }
 
@@ -865,7 +867,8 @@ private struct FullscreenChannelPicker: View {
             HStack(spacing: 8 * contentScale) {
                 AppLogoView(size: 16 * contentScale)
                 Spacer(minLength: 6)
-                Text("\(snapshot.channels) 个频道").fixedSize()
+                Text(query.isEmpty ? "\(snapshot.channels) 个频道" : "\(snapshot.channels) 个频道 · \(programs.count) 档节目")
+                    .fixedSize()
             }
             .font(.system(size: 11 * contentScale)).foregroundStyle(.secondary)
             .padding(.horizontal, 14 * contentScale).padding(.vertical, 10 * contentScale)
