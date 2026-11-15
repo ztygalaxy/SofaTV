@@ -60,6 +60,7 @@ final class UpdateWindowController: NSWindowController, NSWindowDelegate {
     private let installButton = NSButton(title: "", target: nil, action: nil)
     private let progress = NSProgressIndicator()
     private let status = NSTextField(labelWithString: "")
+    private let percentage = NSTextField(labelWithString: "")
     private let progressStack = NSStackView()
     private var downloadTask: Task<Void, Never>?
     private var installing = false
@@ -126,16 +127,25 @@ final class UpdateWindowController: NSWindowController, NSWindowDelegate {
         }
 
         progress.style = .bar
+        progress.isIndeterminate = false
         progress.minValue = 0
         progress.maxValue = 1
         progress.widthAnchor.constraint(equalToConstant: width).isActive = true
         status.font = .systemFont(ofSize: 12)
         status.textColor = .secondaryLabelColor
+        percentage.font = status.font
+        percentage.textColor = status.textColor
+        percentage.alignment = .right
+        let statusSpacer = NSView()
+        statusSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        let statusRow = NSStackView(views: [status, statusSpacer, percentage])
+        statusRow.alignment = .firstBaseline
+        statusRow.widthAnchor.constraint(equalToConstant: width).isActive = true
         progressStack.orientation = .vertical
         progressStack.alignment = .leading
         progressStack.spacing = 8
         progressStack.addArrangedSubview(progress)
-        progressStack.addArrangedSubview(status)
+        progressStack.addArrangedSubview(statusRow)
         progressStack.isHidden = true
         stack.addArrangedSubview(progressStack)
 
@@ -182,6 +192,12 @@ final class UpdateWindowController: NSWindowController, NSWindowDelegate {
         status.stringValue = progressMessage.map { L10n.text($0) } ?? ""
     }
 
+    private func showDownloadProgress(_ fraction: Double?) {
+        progress.doubleValue = fraction ?? 0
+        percentage.stringValue = fraction?.formatted(.percent.precision(.fractionLength(0)).rounded(rule: .down).locale(L10n.locale)) ?? "—"
+        if fraction == 1 { progressMessage = "正在校验更新包…" }
+    }
+
     private func fitWindow() {
         guard let content = window?.contentView, let stack = content.subviews.first as? NSStackView else { return }
         content.layoutSubtreeIfNeeded()
@@ -205,8 +221,7 @@ final class UpdateWindowController: NSWindowController, NSWindowDelegate {
         laterButton.title = L10n.text("取消下载")
         progressStack.isHidden = false
         progressMessage = "正在下载更新…"
-        progress.isIndeterminate = true
-        progress.startAnimation(nil)
+        showDownloadProgress(0)
         fitWindow()
         downloadTask = Task { [weak self] in await self?.downloadAndInstall() }
     }
@@ -217,12 +232,7 @@ final class UpdateWindowController: NSWindowController, NSWindowDelegate {
             try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
             let source = try await UpdateDownload.prepare(update, workspace: workspace) { [weak self] fraction in
                 guard let self, !installing, downloadTask?.isCancelled == false else { return }
-                progress.isIndeterminate = fraction == nil
-                if let fraction {
-                    progress.stopAnimation(nil)
-                    progress.doubleValue = fraction
-                    progressMessage = fraction < 1 ? "正在下载更新… \(Int(fraction * 100))%" : "正在校验更新包…"
-                }
+                showDownloadProgress(fraction)
             }
             try Task.checkCancellation()
             installing = true

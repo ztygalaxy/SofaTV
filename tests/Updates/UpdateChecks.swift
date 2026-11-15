@@ -37,7 +37,7 @@ func unwrap<T>(_ value: T?) throws -> T {
         try installation.testRejectsUnexpectedArchivePathsAndSymlinks()
         print("Update installation checks passed: checksum, extraction, signature, replacement and rejection of invalid packages")
         try await UpdateDownloadTests().run()
-        print("Update download checks passed: local HTTP download, checksum, server errors and cancellation")
+        print("Update download checks passed: HTTP download, byte progress, percentage alignment, checksum, errors and cancellation")
         try await UpdateHelperTests().run()
         print("Update helper checks passed: preflight errors, ready handshake and waiting for parent exit")
     }

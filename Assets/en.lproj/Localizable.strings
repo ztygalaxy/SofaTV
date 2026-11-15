@@ -308,7 +308,6 @@
 "正在下载更新…" = "Downloading update…";
 "正在准备安装，随后将重新打开沙发电视…" = "Preparing to install and reopen SofaTV…";
 "下载或安装更新失败" = "Could Not Download or Install the Update";
-"正在下载更新… %lld%%" = "Downloading update… %lld%%";
 "正在校验更新包…" = "Verifying the update…";
 "正在置顶小窗播放" = "Playing in the mini player";
 "返回主窗口" = "Return to Main Window";

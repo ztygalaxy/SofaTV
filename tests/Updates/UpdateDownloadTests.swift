@@ -1,3 +1,4 @@
+import AppKit
 import CryptoKit
 import Foundation
 
@@ -25,7 +26,19 @@ struct UpdateDownloadTests {
             def __init__(self, *a, **kw): super().__init__(*a, directory=sys.argv[1], **kw)
             def log_message(self, *args): pass
             def do_GET(self):
-                if self.path == '/slow':
+                if self.path in ('/update.zip', '/unknown-size'):
+                    with open(sys.argv[1] + '/update.zip', 'rb') as archive:
+                        data = archive.read()
+                    self.send_response(200)
+                    if self.path == '/update.zip':
+                        self.send_header('Content-Length', str(len(data)))
+                    self.end_headers()
+                    midpoint = len(data) // 2
+                    self.wfile.write(data[:midpoint])
+                    self.wfile.flush()
+                    time.sleep(.4)
+                    self.wfile.write(data[midpoint:])
+                elif self.path == '/slow':
                     self.send_response(200); self.send_header('Content-Length', str(1024*1024*16)); self.end_headers()
                     try:
                         for i in range(256): self.wfile.write(b'x'*65536); self.wfile.flush(); time.sleep(.01)
@@ -55,7 +68,12 @@ struct UpdateDownloadTests {
             if let fraction { progress.append(fraction) }
         }
         check(FileManager.default.fileExists(atPath: source.appendingPathComponent("Contents/MacOS/SofaTV").path))
-        check(progress.allSatisfy { (0...1).contains($0) })
+        check(progress.contains { 0 < $0 && $0 < 1 })
+        check(progress.last == 1)
+        check(progress == progress.sorted() && progress.allSatisfy { (0...1).contains($0) })
+        var unknownProgress: [Double?] = []
+        _ = try await UpdateDownload.prepare(update(path: "unknown-size"), workspace: workspace()) { unknownProgress.append($0) }
+        check(unknownProgress == [nil, 1])
         do {
             _ = try await UpdateDownload.prepare(update(checksum: String(repeating: "0", count: 64)), workspace: workspace()) { _ in }
             preconditionFailure("A corrupted download must be rejected")
@@ -75,5 +93,43 @@ struct UpdateDownloadTests {
         } catch {
             check(error is CancellationError || (error as? URLError)?.code == .cancelled)
         }
+        try await testWindowShowsDownloadProgress(slow)
+    }
+
+    private func testWindowShowsDownloadProgress(_ update: VerifiedUpdate) async throws {
+        let controller = UpdateWindowController(update: update, current: SemanticVersion("0.0.3")!)
+        defer { controller.close() }
+        let content = try unwrap(controller.window?.contentView)
+        func descendants(_ view: NSView) -> [NSView] { view.subviews.flatMap { [$0] + descendants($0) } }
+        let install = try unwrap(descendants(content).compactMap { $0 as? NSButton }.first { $0.title == "下载并安装" })
+        install.performClick(nil)
+        let views = descendants(content)
+        let progress = try unwrap(views.compactMap { $0 as? NSProgressIndicator }.first)
+        let labels = views.compactMap { $0 as? NSTextField }
+        let percentage = try unwrap(labels.first { $0.stringValue == "0%" })
+        let status = try unwrap(labels.first { $0.stringValue == "正在下载更新…" })
+        check(!progress.isIndeterminate && progress.doubleValue == 0)
+
+        let clock = ContinuousClock()
+        let deadline = clock.now + .seconds(2)
+        while percentage.stringValue == "0%", clock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        check(progress.doubleValue > 0 && progress.doubleValue < 1)
+        check(status.stringValue == "正在下载更新…" && !progress.isIndeterminate)
+        let displayed = try unwrap(Int(percentage.stringValue.dropLast()))
+        check(percentage.stringValue.hasSuffix("%") && (1...99).contains(displayed))
+        check(abs(Double(displayed) - progress.doubleValue * 100) < 1)
+
+        content.layoutSubtreeIfNeeded()
+        func alignedFrame(_ view: NSView) -> NSRect {
+            view.superview!.convert(view.alignmentRect(forFrame: view.frame), to: content)
+        }
+        let barFrame = alignedFrame(progress)
+        let statusFrame = alignedFrame(status)
+        let percentageFrame = alignedFrame(percentage)
+        check(abs(barFrame.minX - statusFrame.minX) < 1)
+        check(abs(barFrame.maxX - percentageFrame.maxX) < 1)
+        check(abs(statusFrame.midY - percentageFrame.midY) < 1 && statusFrame.maxY < barFrame.minY)
     }
 }
