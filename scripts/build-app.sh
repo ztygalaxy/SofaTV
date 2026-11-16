@@ -7,7 +7,7 @@ version="${SOFATV_BUILD_VERSION:-$(tr -d '[:space:]' < VERSION)}"
 python3 scripts/build-cmg-macos.py
 python3 scripts/build-h5e-macos.py
 swift build -c release --disable-sandbox --cache-path /private/tmp/sofatv-cache
-app_bundle="dist/沙发电视.app"
+app_bundle="dist/SofaTV.app"
 # Recreate generated output so renamed executables and frameworks cannot leave stale files.
 rm -rf "$app_bundle"
 mkdir -p "$app_bundle/Contents/MacOS"
@@ -26,7 +26,8 @@ cp .build/AppIcon.icns "$app_bundle/Contents/Resources/"
 cp .build/Television.png "$app_bundle/Contents/Resources/"
 cp -R Assets/ChannelLogos "$app_bundle/Contents/Resources/"
 cp -R Assets/PlaybackControls "$app_bundle/Contents/Resources/"
-cp -R Assets/en.lproj Assets/zh-Hans.lproj "$app_bundle/Contents/Resources/"
+cp -R Assets/Onboarding "$app_bundle/Contents/Resources/"
+cp -R Assets/en.lproj Assets/zh-Hans.lproj Assets/zh-Hant.lproj "$app_bundle/Contents/Resources/"
 mkdir -p "$app_bundle/Contents/Resources/Licenses"
 cp LICENSE "$app_bundle/Contents/Resources/Licenses/SofaTV-GPL-3.0.txt"
 cp Assets/ChannelLogos/SOURCE.md "$app_bundle/Contents/Resources/Licenses/Channel-Logos-Source.md"
@@ -45,6 +46,7 @@ cat > "$app_bundle/Contents/Info.plist" <<PLIST
 <key>CFBundleDevelopmentRegion</key><string>en</string>
 <key>CFBundleLocalizations</key><array><string>en</string><string>zh-Hans</string></array>
 <key>CFBundlePackageType</key><string>APPL</string>
+<key>LSHasLocalizedDisplayName</key><true/>
 <key>NSUserNotificationAlertStyle</key><string>alert</string>
 <key>CFBundleShortVersionString</key><string>$version</string>
 <key>LSMinimumSystemVersion</key><string>14.0</string>

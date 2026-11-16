@@ -326,3 +326,24 @@
 "默认频道" = "Default Channels";
 "在线频道列表" = "Online Channel List";
 "升级前保存的频道" = "Channels saved before the upgrade";
+
+/* First-launch guide */
+"新手引导" = "Getting Started";
+"欢迎来到沙发电视" = "Welcome to SofaTV";
+"坐回沙发，好好看电视。添加频道列表后，选择喜爱的频道，好戏马上开始。" = "Sit back and enjoy the show. Add a channel list and pick a favorite.";
+"看你想看的节目" = "Watch What You Want";
+"在侧边栏搜索频道或者节目名称，点击结果跳转换台。" = "Search for a channel or program in the sidebar, then click a result to tune in.";
+"坐等好戏开场" = "Get Ready for the Show";
+"点击节目单右侧的铃铛获取节目开播提醒。" = "Click the bell to the right of a program to get a reminder before it starts.";
+"边做事，边看电视" = "Watch in a Mini Player";
+"点击播放器右上角的图钉，切换为置顶小窗，继续做事。" = "Click the pin at the top right of the player to keep the mini player on top while you work.";
+"频道一目了然" = "See the Channel at a Glance";
+"Dock 栏中即时展示当前频道，一眼便知。" = "See which channel is playing right in the Dock.";
+"未播放" = "Idle";
+"播放中" = "Playing";
+"跳过" = "Skip";
+"下一页" = "Next";
+"添加频道" = "Add Channels";
+"直接添加频道" = "Add Channels Now";
+"导入在线列表地址，或从 Mac 选择 M3U / TXT 文件。" = "Import an online playlist or choose an M3U or TXT file from your Mac.";
+"重新查看引导" = "Back to Getting Started";

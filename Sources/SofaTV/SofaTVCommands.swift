@@ -28,6 +28,9 @@ struct SofaTVCommands: Commands {
                 .keyboardShortcut(",")
         }
         CommandGroup(replacing: .newItem) {}
+        CommandGroup(replacing: .help) {
+            Button(text("新手引导")) { OnboardingWindow.show() }
+        }
         CommandMenu(text("频道")) {
             Button(text("导入频道文件…")) { library?.importChannels() }.keyboardShortcut("o").disabled(library == nil)
             Button(text("导入在线列表…")) { library?.showAddressWindow(direct: false) }.keyboardShortcut("o", modifiers: [.command, .shift]).disabled(library == nil)

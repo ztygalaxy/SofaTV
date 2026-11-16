@@ -111,7 +111,9 @@ struct AppToastVideoRegion: NSViewRepresentable {
         AppToast.shared.reposition()
     }
 
-    func show<Content: View>(id: String, title: String.LocalizationValue, size: NSSize, titleVisible: Bool = false, content: Content) {
+    func show<Content: View>(id: String, title: String.LocalizationValue, size: NSSize, titleVisible: Bool = false,
+                             sizingOptions: NSHostingSizingOptions? = nil,
+                             configureWindow: (NSWindow) -> Void = { _ in }, content: Content) {
         if let controller = windows[id] {
             controller.attach(above: playbackView?.window, fullscreen: playbackIsFullscreen); controller.showWindow(nil); return
         }
@@ -121,8 +123,10 @@ struct AppToastVideoRegion: NSViewRepresentable {
         let host = NSHostingView(rootView: content
             .appLocale()
             .frame(maxWidth: .infinity, maxHeight: .infinity))
+        if let sizingOptions { host.sizingOptions = sizingOptions }
         host.frame = NSRect(origin: .zero, size: size)
         window.contentView = host
+        configureWindow(window)
         let controller = AppWindowController(window: window)
         controller.localizeTitle(title)
         present(controller, id: id)

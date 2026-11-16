@@ -1056,12 +1056,22 @@ struct ContentView: View {
 @main struct SofaTVApp: App {
     @NSApplicationDelegateAdaptor(SofaTVAppDelegate.self) private var appDelegate
     @AppStorage(AppLanguage.defaultsKey) private var language: AppLanguage = .system
-    init() { L10n.configureAtLaunch() }
+    private let showsOnboardingOnLaunch: Bool
+
+    init() {
+        L10n.configureAtLaunch()
+        // Library writes its defaults even when there are no channels.
+        showsOnboardingOnLaunch = OnboardingWindow.shouldShowOnLaunch()
+    }
+
     var body: some Scene {
         let displayLanguage = language.resolved
         WindowGroup(L10n.text("沙发电视", language: displayLanguage), id: "sofatv-main") {
             ContentView().frame(minWidth: 900, minHeight: 560)
                 .appLocale()
+                .task {
+                    if showsOnboardingOnLaunch { OnboardingWindow.showOnce() }
+                }
         }
             // New installs use this size; MainWindowChrome restores each user's saved frame.
             .defaultSize(width: 1050, height: 589)
